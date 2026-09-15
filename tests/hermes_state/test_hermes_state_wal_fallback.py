@@ -596,9 +596,11 @@ class TestFormatSessionDbUnavailable:
         """Locking-protocol cause gets an NFS/SMB pointer for the user."""
         hermes_state._set_last_init_error("OperationalError: locking protocol")
         msg = format_session_db_unavailable()
-        assert "locking protocol" in msg
+        # The raw sqlite phrase stays in the logs; the user gets the network-drive cause and the
+        # repair command (a WAL-docs link is not something a chat user can act on).
         assert "NFS/SMB" in msg
-        assert "sqlite.org/wal.html" in msg
+        assert "hermes doctor --fix" in msg
+        assert "sqlite.org" not in msg
 
     def test_custom_prefix(self):
         """Callers can customize the prefix for context-specific messages."""
