@@ -50,6 +50,7 @@ import { requestVoiceConversationStart } from '@/store/composer'
 import { $activeConnectionId } from '@/store/connections'
 import { $cronReviewRequest, setCronFocusJobId } from '@/store/cron'
 import { requestGatewayForProfile } from '@/store/gateway'
+import { reconnectGateway } from '@/store/gateway-reconnect'
 import { $pinnedSessionIds, pinSession, restoreWorktree, unpinSession } from '@/store/layout'
 import { notifyError } from '@/store/notifications'
 import { $poolLimitsSettingsRequest } from '@/store/pool-limits'
@@ -231,6 +232,8 @@ export function ContribWiring({ children }: { children: ReactNode }) {
 
   // "Restart Hermes" from a toast: recycle the local backend the user is
   // looking at (same IPC the Models page uses), then let the boot hook re-dial.
+  // A remote/cloud connection has no local process to recycle — there the
+  // only meaningful "restart" is re-dialing the connection.
   // eslint-disable-next-line no-restricted-syntax -- one-shot request-seen sentinel, not an atom mirror
   useEffect(() => {
     if (backendRestartRequest === backendRestartSeenRef.current) {
@@ -240,6 +243,12 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     backendRestartSeenRef.current = backendRestartRequest
 
     if (backendRestartRequest > 0) {
+      if ($connection.get()?.mode === 'remote') {
+        void reconnectGateway().catch(err => notifyError(err, translateNow('notifications.errors.restartHermesFailed')))
+
+        return
+      }
+
       void window.hermesDesktop?.recycleBackend?.(normalizeProfileKey($activeGatewayProfile.get())).catch(err =>
         notifyError(err, translateNow('notifications.errors.restartHermesFailed'))
       )
