@@ -1351,6 +1351,7 @@ class TurnRunner:
         """Send the approval request from the agent thread: the adapter's interactive button
         approvals (``send_exec_approval``) when available, else plain text with ``/approve`` steps."""
         from gateway.run import _approval_send_outcome, _format_exec_approval_fallback, _interim_metadata, _redact_approval_command
+        from gateway.run_turn_runner_approval_settle import register_timeout_notice
         ctx = self._ctx
         adapter = ctx._status_adapter
         # Slack's assistant_threads_setStatus disables the compose box, so the user can't type
@@ -1377,6 +1378,11 @@ class TurnRunner:
                     raise RuntimeError("send_exec_approval: loop unavailable")
                 outcome = _approval_send_outcome(fut, timeout=15)
                 if outcome == "sent":
+                    # Without this, a card whose timer runs out keeps live buttons and nobody
+                    # learns the command did NOT run (only the TUI registered a settle hook).
+                    register_timeout_notice(
+                        self, approval_data, command=cmd,
+                        card_message_id=getattr(fut.result(timeout=0), "message_id", None))
                     return
                 if outcome == "ambiguous":
                     # Timeout ≠ failure: the card may have posted with a late ack. The prompt
@@ -1431,7 +1437,10 @@ class TurnRunner:
                 adapter.send(ctx._status_chat_id, msg, metadata=_interim_metadata(metadata)), "Approval text-send scheduling error",
             )
             if fut is not None:
-                fut.result(timeout=15)
+                sent = fut.result(timeout=15)
+                register_timeout_notice(
+                    self, approval_data, command=cmd,
+                    card_message_id=getattr(sent, "message_id", None) if getattr(sent, "success", False) else None)
         except Exception as e:
             logger.error("Failed to send approval request: %s", e)
 
