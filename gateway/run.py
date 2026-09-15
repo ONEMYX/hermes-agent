@@ -3081,6 +3081,13 @@ def _normalize_empty_agent_response(
             # ``error`` mirrors the loop's own final text (curated, e.g. "Response truncated due to
             # output length limit") and is kept; a raw provider envelope goes to the log instead.
             err = str(agent_result.get("error") or "processing incomplete")
+            # A loop site code (truncated, context_overflow, ...) already wrote the full
+            # what-happened / what-to-do sentence: deliver it verbatim. Wrapping it would cut it
+            # mid-sentence at 200 chars and append a second, conflicting set of instructions.
+            from agent.turn_failure_copy import SITE_FAILURE_CODES
+            if (str(agent_result.get("failure_reason") or "") in SITE_FAILURE_CODES
+                    and err.strip() and not _looks_like_gateway_provider_error(err)):
+                return err if err.startswith("⚠️") else f"⚠️ {err}"
             if _looks_like_gateway_provider_error(err):
                 logger.warning("Agent turn ended partially; reply sanitized for chat. Detail: %s", err[:500])
                 reason = ""

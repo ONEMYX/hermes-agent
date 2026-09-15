@@ -249,3 +249,25 @@ async def test_progress_suppressed_when_agent_is_interrupted(monkeypatch, tmp_pa
             f"event '{leaked_query}' leaked into the UI after interrupt — "
             f"progress_callback / drain loop is not checking is_interrupted"
         )
+
+
+def test_partial_site_code_result_is_delivered_verbatim_not_double_wrapped():
+    """A truncated-tool-call exit already carries the curated site copy; the gateway must not
+    prefix it with 'I had to stop before finishing:' and cut it at 200 chars."""
+    from agent.turn_failure_copy import site_copy
+    from gateway.run import _normalize_empty_agent_response
+    curated = site_copy("truncated")
+    result = {"final_response": None, "messages": [], "api_calls": 2, "completed": False, "partial": True,
+              "error": curated, "failure_reason": "truncated", "failure_retryable": True}
+    text = _normalize_empty_agent_response(result, "", history_len=0)
+    assert curated in text
+    assert "I had to stop before finishing" not in text
+    assert text.count("continue") == curated.count("continue")
+
+
+def test_partial_without_site_code_keeps_the_generic_wrapper():
+    from gateway.run import _normalize_empty_agent_response
+    result = {"final_response": None, "messages": [], "api_calls": 2, "completed": False, "partial": True,
+              "error": "Response truncated due to output length limit"}
+    text = _normalize_empty_agent_response(result, "", history_len=0)
+    assert text.startswith("⚠️ I had to stop before finishing")
