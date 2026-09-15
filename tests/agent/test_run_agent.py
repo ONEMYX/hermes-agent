@@ -3620,7 +3620,10 @@ class TestRunConversation:
             patch.object(agent, "_cleanup_task_resources"),
         ):
             result = agent.run_conversation("answer me")
-        assert result["failed"] is True  # empty after retries is a failed turn (failure_reason=empty_response)
+        # Empty after retries keeps the pre-existing status (not a failed turn: cron stays silent,
+        # the transcript keeps the text) and only gains the descriptor code for Desktop/TUI.
+        assert result["failed"] is False and result["completed"] is True
+        assert result["failure_reason"] == "empty_response"
         assert result["failure_reason"] == "empty_response"
         # #34452: explanation replaces the bare "(empty)" sentinel.
         assert result["final_response"] != "(empty)"
@@ -3650,7 +3653,10 @@ class TestRunConversation:
             patch.object(agent, "_cleanup_task_resources"),
         ):
             result = agent.run_conversation("answer me")
-        assert result["failed"] is True  # empty after retries is a failed turn (failure_reason=empty_response)
+        # Empty after retries keeps the pre-existing status (not a failed turn: cron stays silent,
+        # the transcript keeps the text) and only gains the descriptor code for Desktop/TUI.
+        assert result["failed"] is False and result["completed"] is True
+        assert result["failure_reason"] == "empty_response"
         assert result["failure_reason"] == "empty_response"
         assert result["final_response"] != "(empty)"
         # 1 original + 1 retry: the second identical zero-output empty
@@ -3679,7 +3685,10 @@ class TestRunConversation:
             patch.object(agent, "_cleanup_task_resources"),
         ):
             result = agent.run_conversation("answer me")
-        assert result["failed"] is True  # empty after retries is a failed turn (failure_reason=empty_response)
+        # Empty after retries keeps the pre-existing status (not a failed turn: cron stays silent,
+        # the transcript keeps the text) and only gains the descriptor code for Desktop/TUI.
+        assert result["failed"] is False and result["completed"] is True
+        assert result["failure_reason"] == "empty_response"
         assert result["failure_reason"] == "empty_response"
         assert result["api_calls"] == 4  # legacy: 1 original + 3 retries
 
@@ -3699,7 +3708,10 @@ class TestRunConversation:
             caplog.at_level(logging.INFO, logger="agent.conversation_loop"),
         ):
             result = agent.run_conversation("answer me")
-        assert result["failed"] is True  # empty after retries is a failed turn (failure_reason=empty_response)
+        # Empty after retries keeps the pre-existing status (not a failed turn: cron stays silent,
+        # the transcript keeps the text) and only gains the descriptor code for Desktop/TUI.
+        assert result["failed"] is False and result["completed"] is True
+        assert result["failure_reason"] == "empty_response"
         assert result["failure_reason"] == "empty_response"
         assert result["api_calls"] == 2
         assert agent.session_api_calls == 2
@@ -3840,7 +3852,10 @@ class TestRunConversation:
             patch.object(agent, "_try_activate_fallback", side_effect=_mock_fallback),
         ):
             result = agent.run_conversation("answer me")
-        assert result["failed"] is True  # empty after retries is a failed turn (failure_reason=empty_response)
+        # Empty after retries keeps the pre-existing status (not a failed turn: cron stays silent,
+        # the transcript keeps the text) and only gains the descriptor code for Desktop/TUI.
+        assert result["failed"] is False and result["completed"] is True
+        assert result["failure_reason"] == "empty_response"
         assert result["failure_reason"] == "empty_response"
         # #34452: explanation replaces the bare "(empty)" sentinel.
         assert result["final_response"] != "(empty)"
