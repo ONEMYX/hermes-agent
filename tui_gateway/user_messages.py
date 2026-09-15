@@ -2,8 +2,10 @@
 
 One place for the sentences the TUI, Desktop and dashboard print verbatim, so the
 "what happened / what to do" shape stays consistent and the slash commands cited
-(`/model`, `/setup`, `/sessions`, `/retry`) are the ones that exist. Lead phrases that
-clients pattern-match on (``Session busy``) are part of the wire contract — keep them.
+(`/model`, `/new`, `/sessions`, `/retry`) exist on EVERY client this gateway serves (TUI,
+Desktop, dashboard) — no client-only forms (`/sessions new`, `/setup`) and no single-surface
+gestures stated as fact (Ctrl+C is copy on Desktop). Lead phrases that clients pattern-match
+on (``Session busy``) are part of the wire contract — keep them.
 """
 
 from __future__ import annotations
@@ -81,15 +83,16 @@ def turn_error_text(error: Any, surface: dict | None = None, *, recoverable: boo
 
 
 def busy_message(command: str) -> str:
-    """4009 refusal for a history-mutating command while a reply is streaming. The TUI has no
-    ``/interrupt`` slash command — Ctrl+C stops the reply there, the Stop button on Desktop."""
-    return (f"session busy — Hermes is still replying. Press Ctrl+C (or the Stop button) to stop "
-            f"the current reply, then run /{command.lstrip('/')}.")
+    """4009 refusal for a history-mutating command while a reply is streaming. There is no
+    ``/interrupt`` slash command on any client: Desktop has a Stop button, the terminal TUI uses
+    Ctrl+C — name both without assuming which one the reader has."""
+    return (f"session busy — Hermes is still replying. Stop the current reply first (Stop button, "
+            f"or Ctrl+C in a terminal), then run /{command.lstrip('/')}.")
 
 
 def agent_init_failed_message(exc: Any) -> str:
     return (f"Hermes could not start the assistant for this session. Details: {exc}. "
-            "Check the model and provider with /model, or run /setup to reconfigure.")
+            "Check the model and provider with /model, or run `hermes setup` in a terminal to reconfigure.")
 
 
 AGENT_STILL_STARTING = (
@@ -99,4 +102,4 @@ AGENT_STILL_STARTING = (
 
 def resume_failed_message(exc: Any) -> str:
     return (f"Could not reopen that session (its transcript could not be read). Details: {exc}. "
-            "Start a new one with /sessions new, or pick another from /sessions.")
+            "Start a new session (/new), or pick another from /sessions.")

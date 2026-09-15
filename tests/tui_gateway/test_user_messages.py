@@ -38,18 +38,22 @@ def test_busy_message_names_the_real_gesture_not_a_missing_slash_command(command
 
     assert text.startswith("session busy")  # clients match this lead phrase (4009)
     assert "/interrupt" not in text
-    assert "Ctrl+C" in text
+    # Shared gateway: name both gestures, never state the terminal one as the only option.
+    assert "Ctrl+C" in text and "Stop button" in text
+    assert "Press Ctrl+C" not in text
     assert f"/{command}" in text
 
 
 def test_agent_init_and_resume_failures_point_at_existing_commands():
     init = um.agent_init_failed_message(RuntimeError("Unknown provider 'openrouterr'"))
     assert not init.startswith("agent init failed")
-    assert "openrouterr" in init and "/model" in init and "/setup" in init
+    assert "openrouterr" in init and "/model" in init and "hermes setup" in init
+    assert "/setup" not in init  # ui-tui-only launcher; Desktop has no such command
 
     resume = um.resume_failed_message(ValueError("corrupt row"))
     assert not resume.startswith("resume failed")
-    assert "corrupt row" in resume and "/sessions" in resume
+    assert "corrupt row" in resume and "/sessions" in resume and "/new" in resume
+    assert "/sessions new" not in resume  # ui-tui-only alias; Desktop ignores the argument
 
 
 def test_still_starting_copy_is_not_phrased_as_fatal():
