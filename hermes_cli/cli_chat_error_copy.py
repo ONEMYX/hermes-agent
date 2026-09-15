@@ -17,6 +17,9 @@ _REASON_COPY: dict[str, str] = {
     "model_not_found": "'{model}' isn't available on {provider}. Run /model to pick a valid model.",
     "rate_limit": "Rate limited by {provider}; wait a minute or /model to switch.",
     "upstream_rate_limit": "Rate limited by {provider}; wait a minute or /model to switch.",
+    "overloaded": "{provider} is overloaded right now. Send /retry in a moment, or /model to switch.",
+    "server_error": "{provider} had an internal error. Send /retry in a moment, or /model to switch.",
+    "timeout": "{provider} did not answer in time. Send /retry, or /model to switch.",
 }
 _UNKNOWN_COPY = "The model request failed. Run /model to switch or `hermes doctor` to check the setup."
 
@@ -26,13 +29,29 @@ def _short(text: str, limit: int = _SUMMARY_LIMIT) -> str:
     return first if len(first) <= limit else first[: limit - 1].rstrip() + "…"
 
 
-def chat_error_response(error: Exception | str, *, provider: str = "", model: str = "") -> str:
-    """Two-line panel text: plain sentence with the fix command, then ``Details: <raw>``."""
-    from agent.error_classifier import classify_api_error
+def chat_error_response(
+    error: Exception | str, *, provider: str = "", model: str = "", failure_reason: str | None = None,
+) -> str:
+    """Two-line panel text: plain sentence with the fix command, then ``Details: <raw>``.
 
-    exc = error if isinstance(error, Exception) else Exception(str(error))
-    verdict = classify_api_error(exc, provider=provider or "", model=model or "")
-    copy = _REASON_COPY.get(verdict.reason.value, _UNKNOWN_COPY)
+    ``failure_reason`` is the verdict the turn loop already stamped on its result
+    (``agent/turn_failure_copy.stamp_failure``). When present it is used as-is instead of
+    re-classifying a summarised string (which has no status code and almost always lands on
+    'unknown'); for the loop's own site codes the ``error`` text is already the user-facing copy,
+    so it is returned verbatim rather than wrapped and demoted to a Details line."""
+    reason = str(failure_reason or "").strip()
+    if reason:
+        from agent.turn_failure_copy import SITE_FAILURE_CODES
+
+        text = str(error or "").strip()
+        if reason in SITE_FAILURE_CODES and text:
+            return text
+    else:
+        from agent.error_classifier import classify_api_error
+
+        exc = error if isinstance(error, Exception) else Exception(str(error))
+        reason = classify_api_error(exc, provider=provider or "", model=model or "").reason.value
+    copy = _REASON_COPY.get(reason, _UNKNOWN_COPY)
     lead = copy.format(provider=provider or "the provider", model=model or "the current model")
     return f"{lead}\nDetails: {_short(str(error), 300)}"
 

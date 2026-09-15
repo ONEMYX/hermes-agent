@@ -484,7 +484,8 @@ class CLIChatTurnMixin:
             response = chat_error_response(
                 str(turn.result.get("error") or "Unknown error"),
                 provider=str(getattr(self.agent, "provider", "") or self.provider or ""),
-                model=str(getattr(self.agent, "model", "") or self.model or ""))
+                model=str(getattr(self.agent, "model", "") or self.model or ""),
+                failure_reason=turn.result.get("failure_reason"))
             # Stop continuous voice on persistent errors (e.g. 429) — else error→record→error loops.
             if self._voice_continuous:
                 self._voice_continuous = False

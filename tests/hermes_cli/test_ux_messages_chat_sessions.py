@@ -46,6 +46,20 @@ def test_chat_error_response_accepts_plain_string_summary():
     assert "hermes model" in text.splitlines()[0]
 
 
+def test_chat_error_response_trusts_stamped_provider_verdict_over_reclassifying_text():
+    # The loop stamped 'rate_limit'; the summarised text alone would classify as unknown.
+    text = chat_error_response("upstream said no", provider="openrouter", model="m", failure_reason="rate_limit")
+    assert "Rate limited" in text.splitlines()[0]
+    assert "Details: upstream said no" in text
+
+
+def test_chat_error_response_returns_site_copy_verbatim_instead_of_double_wrapping():
+    curated = "The model's reply was cut off before it finished. Send `continue`."
+    text = chat_error_response(curated, provider="openrouter", model="m", failure_reason="truncated")
+    assert text == curated
+    assert "Details:" not in text
+
+
 # ── cli-06: agent could not be built on first message ──────────────────────
 
 def test_agent_init_failure_message_says_message_not_sent_and_points_to_doctor():
