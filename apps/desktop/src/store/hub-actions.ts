@@ -4,12 +4,15 @@ import {
   getActionStatus,
   installSkillFromHub,
   type ProfileScope,
+  scanSkillHub,
   uninstallSkillFromHub,
   updateSkillsFromHub
 } from '@/hermes'
+import { translateNow } from '@/i18n'
 import { queryClient } from '@/lib/query-client'
 import { invalidateSlashCompletions } from '@/lib/slash-completion-cache'
 import { upsertDesktopActionTask } from '@/store/activity'
+import { notify, notifyError } from '@/store/notifications'
 import { $activeGatewayProfile, normalizeProfileKey } from '@/store/profile'
 
 const POLL_MS = 1200
@@ -134,7 +137,14 @@ async function runHubAction(
     // the unchanged skills list as "install did nothing" (Aug 2026 report).
     // The last log lines carry the subprocess's actual error.
     if (exitCode !== null && exitCode !== 0) {
-      const detail = ($hubActions.get()[key]?.lines ?? []).slice(-3).join('\n').trim()
+      const lines = $hubActions.get()[key]?.lines ?? []
+      const blocked = parseInstallBlocked(lines)
+
+      if (blocked) {
+        throw new HubInstallBlockedError(key, blocked.findings, blocked.unverified, lines.slice(-3).join('\n').trim())
+      }
+
+      const detail = lines.slice(-3).join('\n').trim()
 
       throw new Error(detail || `Action exited with code ${exitCode}`)
     }
@@ -173,4 +183,67 @@ export function updateHubSkills(profile?: ProfileScope): Promise<void> {
 
 export function closeHubLog(): void {
   $hubActiveLog.set(null)
+}
+
+// `hermes skills install` prints "Installation blocked: Blocked (community
+// source + caution verdict, 2 findings). Use --force to override." and exits
+// non-zero when the security scan gate refuses. That CLI tail is the only
+// signal the Desktop gets, so parse it into a structured failure the toast
+// can explain (tools-runtime-21). `--force` has no Desktop route, so the
+// remedy offered is reading the scan, not overriding it.
+const INSTALL_BLOCKED_RE = /Installation blocked:.*?\((?<source>[a-z_-]+) source \+ (?<verdict>[a-z_]+) verdict, (?<findings>\d+) findings?\)/i
+
+export function parseInstallBlocked(lines: readonly string[]): { findings: number; unverified: boolean } | null {
+  const match = lines.join('\n').match(INSTALL_BLOCKED_RE)
+
+  if (!match?.groups) {
+    return null
+  }
+
+  return { findings: Number(match.groups.findings), unverified: match.groups.source !== 'official' }
+}
+
+export class HubInstallBlockedError extends Error {
+  constructor(
+    readonly identifier: string,
+    readonly findings: number,
+    readonly unverified: boolean,
+    detail: string
+  ) {
+    super(detail)
+    this.name = 'HubInstallBlockedError'
+  }
+}
+
+/** Toast for a failed hub action: a blocked install explains the scan gate and
+ *  offers "View scan"; anything else keeps the generic summary + raw tail. */
+export function notifyHubActionFailed(err: unknown, fallbackTitle: string, skillName?: string, profile?: ProfileScope): void {
+  if (!(err instanceof HubInstallBlockedError)) {
+    notifyError(err, fallbackTitle)
+
+    return
+  }
+
+  const name = skillName || err.identifier
+
+  notify({
+    kind: 'error',
+    title: translateNow('skills.hub.installBlockedTitle', name),
+    message: translateNow('skills.hub.installBlockedMessage', err.findings, err.unverified),
+    detail: err.message || undefined,
+    action: {
+      label: translateNow('skills.hub.viewScan'),
+      onClick: () =>
+        void scanSkillHub(err.identifier, typeof profile === 'object' ? profile?.profile : profile)
+          .then(scan =>
+            notify({
+              kind: 'warning',
+              title: translateNow('skills.hub.installBlockedTitle', name),
+              message: scan.summary,
+              detail: scan.findings.map(f => `${f.severity}: ${f.description}`).join('\n') || undefined
+            })
+          )
+          .catch(scanErr => notifyError(scanErr, translateNow('skills.hub.scanFailed')))
+    }
+  })
 }
