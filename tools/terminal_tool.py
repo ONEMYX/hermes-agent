@@ -49,6 +49,7 @@ from tools.terminal_tool_config import (
 )
 from tools.terminal_tool_backends import (
     _REQUIREMENT_CHECKERS, _VERCEL_SANDBOX_DEFAULT_CWD, _check_plugin_requirements,
+    _record_unavailable_reason, terminal_backend_unavailable_reason,  # noqa: F401 — re-exported
 )
 # display_hermes_home imported lazily at call site (stale-module safety during hermes update)
 from tools.tool_backend_helpers import coerce_modal_mode, managed_nous_tools_enabled
@@ -1255,13 +1256,15 @@ def terminal_tool(
 
 
 def check_terminal_requirements() -> bool:
-    """Check if all requirements for the terminal tool are met."""
+    """Check if all requirements for the terminal tool are met. The reason for a failure is kept for
+    :func:`terminal_backend_unavailable_reason` (CLI startup notice / doctor)."""
     try:
         config = _get_env_config()
         checker = _REQUIREMENT_CHECKERS.get(config["env_type"], _check_plugin_requirements)
         return checker(config)
     except Exception as e:
         logger.error("Terminal requirements check failed: %s", e, exc_info=True)
+        _record_unavailable_reason(f"the requirements check failed: {e}")
         return False
 
 

@@ -3102,19 +3102,25 @@ class HermesCLI(CLIProcessNotificationsMixin, CLIAgentSetupMixin, CLICommandsMix
             self.preloaded_skills = loaded_skills
 
     def _show_tool_availability_warnings(self):
-        """Warn about tools disabled by missing API keys (not system deps)."""
+        """Warn about toolsets switched off at startup (missing API keys, unusable terminal backend)."""
         try:
             from model_tools import check_tool_availability
+            from hermes_cli.doctor_tools import _enabled_cli_toolsets_for_doctor
+            from hermes_cli.tool_availability_notices import current_terminal_backend, tool_availability_warning_lines
+            from tools.terminal_tool import terminal_backend_unavailable_reason
 
-            available, unavailable = check_tool_availability()
-            api_key_missing = [u for u in unavailable if u["missing_vars"]]
-
-            if api_key_missing:
+            _, unavailable = check_tool_availability()
+            # Only toolsets this CLI session actually has (banner/doctor use the same filter).
+            enabled = {str(t) for t in (self.enabled_toolsets or [])} or _enabled_cli_toolsets_for_doctor()
+            if enabled:
+                unavailable = [u for u in unavailable if str(u.get("name", "")) in enabled]
+            lines = tool_availability_warning_lines(
+                unavailable, terminal_reason=terminal_backend_unavailable_reason(),
+                terminal_backend=current_terminal_backend())
+            if lines:
                 self._console_print()
-                self._console_print("[yellow]⚠️  Some tools disabled (missing API keys):[/]")
-                for item in api_key_missing:
-                    self._console_print(f"   [dim]• {item['name']}[/] [dim italic]({', '.join(item['missing_vars'])})[/]")
-                self._console_print("[dim]   Run 'hermes setup' to configure[/]")
+                for line in lines:
+                    self._console_print(line)
         except Exception:
             pass
 
