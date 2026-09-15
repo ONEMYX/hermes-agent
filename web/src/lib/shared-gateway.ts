@@ -53,12 +53,21 @@ const GATEWAY_VERB_COPY: Record<"start" | "stop" | "restart", string> = {
   restart: "Could not restart the gateway",
 };
 
-/** Toast for a failed Start/Stop/Restart: lead with the outcome, then the detail, then the fix. */
+/** Toast for a failed Start/Stop/Restart: lead with the outcome, then the detail, then the fix.
+ *  `error` (the caught value) decides whether the Logs pointer makes sense: when the dashboard
+ *  itself is unreachable (ApiError.status 0) the Logs page cannot load either, so it is omitted. */
 export function gatewayActionFailedMessage(
   verb: "start" | "stop" | "restart",
   detail: string,
+  error?: unknown,
 ): string {
-  return `${GATEWAY_VERB_COPY[verb]}: ${detail}. Open Logs for details.`;
+  const trimmed = detail.trim().replace(/\.+$/, "");
+  const ended = /[!?]$/.test(trimmed);
+  const head = trimmed
+    ? `${GATEWAY_VERB_COPY[verb]}: ${trimmed}${ended ? "" : "."}`
+    : `${GATEWAY_VERB_COPY[verb]}.`;
+  const unreachable = error instanceof ApiError && error.status === 0;
+  return unreachable ? head : `${head} Open Logs for details.`;
 }
 
 /** A 409 on gateway start/stop for a served profile carries the multiplexer explanation in

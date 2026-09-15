@@ -36,6 +36,12 @@ const reloadMocks = vi.hoisted(() => ({
   maybeReloadForLoopbackWsAuthFailure: vi.fn(() => true)
 }))
 
+const routerMocks = vi.hoisted(() => ({ navigate: vi.fn() }))
+
+vi.mock('react-router', () => ({
+  useNavigate: () => routerMocks.navigate
+}))
+
 vi.mock('@/lib/api', () => ({
   HERMES_BASE_PATH: '',
   api: { getModelInfo: apiMocks.getModelInfo },
@@ -460,9 +466,17 @@ describe('ChatSidebar event socket reconnect', () => {
 
     expect(container.textContent).toContain('No API key set for openrouter')
     expect(container.textContent).not.toContain('First message will fail')
-    const labels = Array.from(container.querySelectorAll('button')).map(b => b.textContent?.trim())
+    const buttons = Array.from(container.querySelectorAll('button'))
+    const labels = buttons.map(b => b.textContent?.trim())
     expect(labels).toContain('Add key')
     expect(labels).toContain('Switch model')
+
+    // Add key must be an in-app route change: a full page load would tear down
+    // the terminal scrollback and the chat sockets.
+    await act(async () => {
+      buttons.find(b => b.textContent?.trim() === 'Add key')?.click()
+    })
+    expect(routerMocks.navigate).toHaveBeenCalledWith('/env')
   })
 
   it('explains that only the side panel is affected when the sidecar cannot connect', async () => {

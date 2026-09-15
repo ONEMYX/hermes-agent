@@ -61,6 +61,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Input } from "@nous-research/ui/ui/components/input";
 import { useI18n } from "@/i18n";
+import { en } from "@/i18n/en";
 import { usePageHeader } from "@/contexts/usePageHeader";
 import { PluginSlot } from "@/plugins";
 import { errorMessage } from "@/lib/api-error";
@@ -391,7 +392,7 @@ export default function SkillsPage() {
 
       {loadError && (
         <LoadErrorNotice
-          what="skills"
+          what={t.skills.loadWhat ?? en.skills.loadWhat!}
           detail={loadError}
           onRetry={() => {
             setLoading(true);
@@ -562,7 +563,7 @@ export default function SkillsPage() {
                 </div>
               </CardHeader>
               <CardContent className="px-4 pb-4">
-                {activeSkills.length === 0 ? (
+                {loadError ? null : activeSkills.length === 0 ? (
                   <div className="flex flex-col items-center gap-3 py-8 text-center">
                     <p className="text-sm text-muted-foreground">
                       {skills.length === 0
@@ -572,10 +573,10 @@ export default function SkillsPage() {
                     {skills.length === 0 && (
                       <div className="flex flex-wrap justify-center gap-2">
                         <Button size="sm" onClick={() => setView("hub")}>
-                          Browse skills hub
+                          {t.skills.browseHub ?? en.skills.browseHub}
                         </Button>
                         <Button size="sm" outlined onClick={openCreateEditor}>
-                          Create skill
+                          {t.skills.createSkill ?? en.skills.createSkill}
                         </Button>
                       </div>
                     )}

@@ -239,6 +239,10 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
   // True after the automatic reconnect ladder used its last attempt: the
   // overlay then says so and offers "Check server status" alongside Reconnect.
   const [reconnectGaveUp, setReconnectGaveUp] = useState(false);
+  const reconnectGaveUpRef = useRef(false);
+  useEffect(() => {
+    reconnectGaveUpRef.current = reconnectGaveUp;
+  }, [reconnectGaveUp]);
   // Why ptyState is "ended": the agent process exited (/exit or crash), or the
   // server could not start it at all (close 1011; the reason is in the terminal).
   const [endedReason, setEndedReason] = useState<"exited" | "start-failed">("exited");
@@ -1184,6 +1188,7 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
         console.warn(`[chat] PTY reconnect gave up after ${PTY_RECONNECT_MAX_ATTEMPTS} attempts (last code=${code ?? "none"})`);
         setBanner(null);
         setBannerAction(null);
+        reconnectGaveUpRef.current = true;
         setReconnectGaveUp(true);
         setPtyState("closed");
         return;
@@ -1683,6 +1688,7 @@ export default function ChatPage({ isActive = true }: { isActive?: boolean }) {
         socketReadyState,
         ptyState: ptyStateRef.current,
         connectInFlight: connectInFlightRef.current,
+        reconnectGaveUp: reconnectGaveUpRef.current,
       })
     ) {
       const now = Date.now();

@@ -4,6 +4,7 @@ import {
   PTY_GAVE_UP_BANNER,
   PTY_RECONNECTING_BANNER,
   PTY_SESSION_ENDED_MESSAGE,
+  PTY_START_FAILED_MESSAGE,
   PTY_TOKEN_MISSING_BANNER,
   ptyReconnectExhausted,
   ptyRejectionBanner
@@ -44,5 +45,13 @@ describe('pty close copy', () => {
     expect(PTY_GAVE_UP_BANNER.text).toContain('hermes dashboard')
     expect(PTY_SESSION_ENDED_MESSAGE).toMatch(/crashed/i)
     expect(PTY_SESSION_ENDED_MESSAGE).toMatch(/logs/i)
+  })
+})
+
+describe('start-failed overlay copy', () => {
+  it('stays neutral: close 1011 also means "no terminal support here", where retrying cannot help', () => {
+    expect(PTY_START_FAILED_MESSAGE).toMatch(/printed above/)
+    expect(PTY_START_FAILED_MESSAGE).not.toMatch(/fix it|Start new session/)
+    expect(PTY_START_FAILED_MESSAGE).not.toMatch(/1011/)
   })
 })

@@ -385,6 +385,7 @@ export function ModelPickerDialog(props: Props) {
           <ProviderColumn
             loading={loading}
             error={error}
+            onClose={onClose}
             providers={filteredProviders}
             total={providers.length}
             selectedSlug={selectedSlug}
@@ -494,6 +495,7 @@ function ProviderColumn({
   selectedSlug,
   query,
   onSelect,
+  onClose,
 }: {
   loading: boolean;
   error: string | null;
@@ -502,6 +504,8 @@ function ProviderColumn({
   selectedSlug: string;
   query: string;
   onSelect(slug: string): void;
+  /** The links below navigate away; the full-screen dialog must close or it keeps covering the target page. */
+  onClose(): void;
 }) {
   return (
     <div className="border-r border-border overflow-y-auto">
@@ -521,10 +525,10 @@ function ProviderColumn({
             <div className="flex flex-col gap-2">
               <span>{NO_PROVIDERS_MESSAGE}</span>
               <div className="flex flex-wrap gap-2">
-                <Link to="/env" className="underline underline-offset-2 hover:text-foreground">
+                <Link to="/env" onClick={onClose} className="underline underline-offset-2 hover:text-foreground">
                   Open Keys
                 </Link>
-                <Link to="/models" className="underline underline-offset-2 hover:text-foreground">
+                <Link to="/models" onClick={onClose} className="underline underline-offset-2 hover:text-foreground">
                   Sign in to a provider
                 </Link>
               </div>

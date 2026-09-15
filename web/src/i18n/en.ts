@@ -10,6 +10,8 @@ export const en: Translations = {
     delete: "Delete",
     refresh: "Refresh",
     retry: "Retry",
+    loadFailed: "Could not load {what}. Check that the dashboard server is running and click Retry.",
+    loadFailedDetails: "Details: {detail}",
     search: "Search...",
     loading: "Loading...",
     create: "Create",
@@ -249,6 +251,11 @@ export const en: Translations = {
   },
 
   cron: {
+    loadWhat: "cron jobs",
+    // Script-only mode on, Script field empty. `no_agent` is the config key, not a term the
+    // user has seen; name the field they must fill instead.
+    scriptRequired:
+      "Script-only jobs need a script path. Fill in the Script field or switch the job back to prompt mode.",
     confirmDeleteMessage:
       "This removes the job from the schedule. This cannot be undone.",
     confirmDeleteTitle: "Delete scheduled job?",
@@ -438,6 +445,9 @@ export const en: Translations = {
   skills: {
     title: "Skills",
     searchPlaceholder: "Search skills and toolsets...",
+    loadWhat: "skills",
+    browseHub: "Browse skills hub",
+    createSkill: "Create skill",
     enabledOf: "{enabled}/{total} enabled",
     all: "All",
     categories: "Categories",

@@ -135,7 +135,10 @@ export async function fetchJSON<T>(
     // fetch() only rejects when the request never got a response: the
     // backend is down, the port is closed, or the network dropped. Tell the
     // user that in words instead of `TypeError: Failed to fetch`.
-    throw apiErrorFromNetworkFailure(cause, url);
+    const err = apiErrorFromNetworkFailure(cause, url);
+    // The toast shows only the sentence; keep status/path/body in the console for bug reports.
+    console.warn("[api]", err.details);
+    throw err;
   }
   if (res.status === 401) {
     // Phase 6: the gated middleware emits a structured envelope so the
@@ -194,7 +197,9 @@ export async function fetchJSON<T>(
   }
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
-    throw apiErrorFromResponse(res.status, text, url);
+    const err = apiErrorFromResponse(res.status, text, url);
+    console.warn("[api]", err.details);
+    throw err;
   }
   return res.json();
 }

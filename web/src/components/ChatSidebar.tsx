@@ -34,7 +34,7 @@ import { ModelReloadConfirm } from '@/components/ModelReloadConfirm'
 import { ReasoningPicker } from '@/components/ReasoningPicker'
 import { GatewayClient, type ConnectionState } from '@/lib/gatewayClient'
 import { EventsFeedClient } from '@/lib/eventsFeedClient'
-import { api, HERMES_BASE_PATH } from '@/lib/api'
+import { api } from '@/lib/api'
 import {
   EVENTS_MAX_RECONNECT_ATTEMPTS,
   eventsGaveUpMessage,
@@ -52,6 +52,7 @@ import { titleFromSessionInfoPayload } from '@/lib/chat-title'
 import { cn } from '@/lib/utils'
 import { AlertCircle, ChevronDown, KeyRound, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router'
 
 interface SessionInfo {
   cwd?: string
@@ -108,6 +109,7 @@ export function ChatSidebar({
   onDashboardNewSessionRequest,
   onSessionTitleChange
 }: ChatSidebarProps) {
+  const navigate = useNavigate()
   // `version` bumps on reconnect (manual button, profile/channel switch) and
   // re-runs the socket effects. The clients themselves live for the whole
   // component: the shared client keeps per-session seq watermarks and asks
@@ -458,9 +460,10 @@ export function ChatSidebar({
                   size="sm"
                   outlined
                   prefix={<KeyRound />}
-                  // Full navigation rather than a router Link: the sidebar is
-                  // also mounted in the mobile portal outside the route tree.
-                  onClick={() => window.location.assign(`${HERMES_BASE_PATH}/env`)}
+                  // Router navigation: a full page load would tear down the
+                  // xterm scrollback and the chat sockets. (The mobile portal
+                  // still lives under ChatPage, so router context is present.)
+                  onClick={() => navigate('/env')}
                 >
                   Add key
                 </Button>

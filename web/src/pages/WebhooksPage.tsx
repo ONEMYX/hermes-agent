@@ -142,7 +142,7 @@ export default function WebhooksPage() {
       void watchRestartOutcome();
     } catch (e) {
       setRestartNeeded(true);
-      setRestartError(String(e));
+      setRestartError(errorMessage(e));
       showToast(`Failed to restart: ${errorMessage(e)}`, "error");
     } finally {
       setRestarting(false);

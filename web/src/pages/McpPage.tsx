@@ -607,7 +607,7 @@ export default function McpPage() {
             <CardContent className="flex flex-col items-center gap-3 py-8 text-center text-sm text-muted-foreground">
               <p>
                 No MCP servers yet. MCP servers give the agent extra tools (GitHub, databases,
-                browsers…). Pick one from the catalog below or add your own with the form above.
+                browsers…). Pick one from the catalog below, or click Add Server at the top of the page.
               </p>
               <Button
                 size="sm"

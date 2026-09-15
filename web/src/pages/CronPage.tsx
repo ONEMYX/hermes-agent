@@ -20,7 +20,6 @@ import type {
 } from "@/lib/api";
 import {
   buildCronJobPayload,
-  CRON_SCRIPT_REQUIRED_MESSAGE,
   cronJobHasExecutionContent,
   cronJobFormFromJob,
   cronLastResult,
@@ -48,6 +47,7 @@ import { Card, CardContent } from "@nous-research/ui/ui/components/card";
 import { Input } from "@nous-research/ui/ui/components/input";
 import { Label } from "@nous-research/ui/ui/components/label";
 import { useI18n } from "@/i18n";
+import { en } from "@/i18n/en";
 import { usePageHeader } from "@/contexts/usePageHeader";
 import { PluginSlot } from "@/plugins";
 import { LoadErrorNotice } from "@/components/LoadErrorNotice";
@@ -716,7 +716,7 @@ export default function CronPage() {
       return;
     }
     if (payload.no_agent && !payload.script) {
-      showToast(CRON_SCRIPT_REQUIRED_MESSAGE, "error");
+      showToast(t.cron.scriptRequired ?? en.cron.scriptRequired!, "error");
       focusCronField("cron-script");
       return;
     }
@@ -745,7 +745,7 @@ export default function CronPage() {
       return;
     }
     if (payload.no_agent && !payload.script) {
-      showToast(CRON_SCRIPT_REQUIRED_MESSAGE, "error");
+      showToast(t.cron.scriptRequired ?? en.cron.scriptRequired!, "error");
       focusCronField("edit-cron-script");
       return;
     }
@@ -884,7 +884,7 @@ export default function CronPage() {
 
       {jobsLoadError && (
         <LoadErrorNotice
-          what="cron jobs"
+          what={t.cron.loadWhat ?? en.cron.loadWhat!}
           detail={jobsLoadError}
           onRetry={() => loadJobs(selectedProfile)}
         />
@@ -1088,7 +1088,7 @@ export default function CronPage() {
           </div>
         </div>
 
-        {jobs.length === 0 && (
+        {jobs.length === 0 && !jobsLoadError && (
           <Card>
             <CardContent className="flex flex-col items-center gap-3 py-8 text-center text-sm text-muted-foreground">
               <span>{t.cron.noJobs}</span>

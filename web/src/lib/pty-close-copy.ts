@@ -57,9 +57,10 @@ export const PTY_GAVE_UP_BANNER: PtyBanner = {
 export const PTY_SESSION_ENDED_MESSAGE =
   'Chat session ended. If you did not end it yourself, the agent may have crashed — open Logs to see why, or start a new session.'
 
-/** Overlay copy when the server could not start the chat at all (close 1011; details are in the terminal). */
-export const PTY_START_FAILED_MESSAGE =
-  'Chat could not start. The reason is printed above; fix it and click Start new session.'
+/** Overlay copy when the server could not start the chat at all (close 1011; details are in the
+ *  terminal). Neutral on purpose: 1011 also covers "no terminal support on this platform"
+ *  (native Windows), where retrying cannot help, so the text must not promise a fix. */
+export const PTY_START_FAILED_MESSAGE = 'Chat could not start. The reason is printed above.'
 
 /** Terminal footer line replacing `[session ended (code N)]`. */
 export const PTY_SESSION_ENDED_TERMINAL_LINE = '[chat session ended]'

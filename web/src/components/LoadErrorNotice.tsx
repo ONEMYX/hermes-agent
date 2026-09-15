@@ -2,10 +2,12 @@ import { AlertCircle, RotateCcw } from "lucide-react";
 import { Button } from "@nous-research/ui/ui/components/button";
 import { Card } from "@nous-research/ui/ui/components/card";
 
+import { useI18n } from "@/i18n";
+import { loadErrorCopy } from "@/lib/load-error-copy";
 import { cn } from "@/lib/utils";
 
 interface LoadErrorNoticeProps {
-  /** What failed to load, e.g. "cron jobs". */
+  /** What failed to load, already translated (e.g. `t.cron.loadWhat`). */
   what: string;
   /** The humanized error (`errorMessage(err)`), shown as a dimmed detail line. */
   detail?: string | null;
@@ -19,6 +21,9 @@ interface LoadErrorNoticeProps {
  * retry action, so the user was left with an empty page and no next step.
  */
 export function LoadErrorNotice({ what, detail, onRetry, className }: LoadErrorNoticeProps) {
+  const { t } = useI18n();
+  const copy = loadErrorCopy(t.common, what, detail);
+
   return (
     <Card
       role="alert"
@@ -29,10 +34,8 @@ export function LoadErrorNotice({ what, detail, onRetry, className }: LoadErrorN
     >
       <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
       <div className="min-w-0 flex-1">
-        <div className="text-destructive">
-          Could not load {what}. Check that the dashboard server is running and click Retry.
-        </div>
-        {detail && <div className="mt-0.5 text-muted-foreground">Details: {detail}</div>}
+        <div className="text-destructive">{copy.title}</div>
+        {copy.details && <div className="mt-0.5 text-muted-foreground">{copy.details}</div>}
         <Button
           size="sm"
           outlined
@@ -40,7 +43,7 @@ export function LoadErrorNotice({ what, detail, onRetry, className }: LoadErrorN
           onClick={onRetry}
           prefix={<RotateCcw className="h-3.5 w-3.5" />}
         >
-          Retry
+          {t.common.retry}
         </Button>
       </div>
     </Card>

@@ -75,6 +75,30 @@ describe("fetchJSON error contract", () => {
     expect(err.status).toBe(0);
     expect(err.body).toContain("Failed to fetch");
   });
+
+  it("logs status, path and body to the console so bug reports keep what the toast drops", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async () => new Response('{"detail":"nope"}', { status: 503 })),
+    );
+    await fetchJSON("/api/status").catch(() => null);
+
+    const logged = warn.mock.calls.map((c) => c.map(String).join(" ")).join("\n");
+    expect(logged).toContain("503");
+    expect(logged).toContain("/api/status");
+    expect(logged).toContain("nope");
+
+    warn.mockClear();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async () => {
+        throw new TypeError("Failed to fetch");
+      }),
+    );
+    await fetchJSON("/api/status").catch(() => null);
+    expect(warn.mock.calls.map((c) => c.map(String).join(" ")).join("\n")).toContain("Failed to fetch");
+  });
 });
 
 describe("extractDetail", () => {

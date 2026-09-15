@@ -70,7 +70,7 @@ import type {
   DebugShareResponse,
   GatewayMigratePlan,
 } from "@/lib/api";
-import { errorMessage } from "@/lib/api-error";
+import { apiErrorFromResponse, errorMessage } from "@/lib/api-error";
 
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -328,7 +328,7 @@ export default function SystemPage() {
         setServedNotice(refusal);
         return false;
       }
-      showToast(gatewayActionFailedMessage(verb, errorMessage(e)), "error");
+      showToast(gatewayActionFailedMessage(verb, errorMessage(e), e), "error");
       return false;
     }
   };
@@ -486,7 +486,9 @@ export default function SystemPage() {
     setDownloadingBackup(true);
     try {
       const res = await api.downloadBackup(archive);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        throw apiErrorFromResponse(res.status, await res.text().catch(() => ""), res.url);
+      }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
