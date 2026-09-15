@@ -35,6 +35,9 @@ from agent.retry_utils import parse_retry_after_seconds
 
 logger = logging.getLogger(__name__)
 
+# Every refusal (slash command, approval button, picker, prompt) says the same thing.
+_UNAUTHORIZED = unauthorized_action_notice(Platform.DISCORD)
+
 _DISCORD_MARKDOWN_LINK_LABEL_RE = re.compile(r"([\\\[\]])")
 _DISCORD_URL_LABEL_SCHEME_RE = re.compile(r"^https?://", re.IGNORECASE)
 
@@ -264,7 +267,7 @@ from gateway.platforms.helpers import cancel_task
 from utils import atomic_json_write, env_float
 from gateway.platforms.base_exec_approval import EA_HEADER_TEXT, EA_REASON_LABEL_TEXT
 from gateway.platforms.base import (
-    BasePlatformAdapter, ExecApprovalPrompt, SendResult,
+    BasePlatformAdapter, ExecApprovalPrompt, SendResult, unauthorized_action_notice,
     cache_image_from_url, cache_image_from_bytes_async, cache_audio_from_url, cache_audio_from_bytes_async,
     cache_document_from_bytes_async, SUPPORTED_DOCUMENT_TYPES, _TEXT_INJECT_EXTENSIONS,
     _prefix_within_utf16_limit, utf16_len, validate_inbound_media_size,
@@ -3915,7 +3918,7 @@ class DiscordAdapter(DiscordMediaMixin, BasePlatformAdapter):
         )
         try:
             await interaction.response.send_message(
-                "You're not authorized to use this command.", ephemeral=True,
+                _UNAUTHORIZED, ephemeral=True,
             )
         except Exception as e:
             # Interaction may already be responded to (caller deferred, Discord retry).
@@ -6067,7 +6070,7 @@ def _define_discord_view_classes() -> None:
             """Resolve the approval via the gateway approval queue and update the embed."""
             if not await self._gate(
                 interaction, resolved_msg="This approval has already been resolved~",
-                unauth_msg="You're not authorized to approve commands~",
+                unauth_msg=_UNAUTHORIZED,
             ):
                 return
             self.resolved = True
@@ -6117,7 +6120,7 @@ def _define_discord_view_classes() -> None:
         async def _resolve(self, interaction: discord.Interaction, choice: str, color: discord.Color, label: str):
             if not await self._gate(
                 interaction, resolved_msg="This prompt has already been resolved~",
-                unauth_msg="You're not authorized to answer this prompt~",
+                unauth_msg=_UNAUTHORIZED,
             ):
                 return
             await self._finalize_embed(interaction, color, f"{label} by {interaction.user.display_name}")
@@ -6156,7 +6159,7 @@ def _define_discord_view_classes() -> None:
             self.session_key = session_key
 
         async def _respond(self, interaction: discord.Interaction, answer: str, color: discord.Color, label: str):
-            if not await self._gate(interaction, resolved_msg="Already answered~", unauth_msg="You're not authorized~"):
+            if not await self._gate(interaction, resolved_msg="Already answered~", unauth_msg=_UNAUTHORIZED):
                 return
             await self._finalize_embed(interaction, color, f"{label} by {interaction.user.display_name}")
             try:
@@ -6278,7 +6281,7 @@ def _define_discord_view_classes() -> None:
             return discord.Embed(title=title, description=description, color=discord.Color.blue() if color is None else color)
 
         async def _on_provider_selected(self, interaction: discord.Interaction):
-            if not await self._gate(interaction, resolved_msg=None, unauth_msg="You're not authorized~"):
+            if not await self._gate(interaction, resolved_msg=None, unauth_msg=_UNAUTHORIZED):
                 return
             provider_slug = interaction.data["values"][0]
             self._selected_provider = provider_slug
@@ -6292,7 +6295,7 @@ def _define_discord_view_classes() -> None:
             await self._edit(interaction, f"Provider: **{pname}**\nSelect a model:{extra}")
 
         async def _switch_selected_model(self, interaction: discord.Interaction, model_id: str):
-            if not await self._gate(interaction, resolved_msg="Already resolved~", unauth_msg="You're not authorized~"):
+            if not await self._gate(interaction, resolved_msg="Already resolved~", unauth_msg=_UNAUTHORIZED):
                 return
             self.resolved = True
             self.clear_items()
@@ -6307,7 +6310,7 @@ def _define_discord_view_classes() -> None:
             )
 
         async def _on_model_selected(self, interaction: discord.Interaction):
-            if not await self._gate(interaction, resolved_msg="Already resolved~", unauth_msg="You're not authorized~"):
+            if not await self._gate(interaction, resolved_msg="Already resolved~", unauth_msg=_UNAUTHORIZED):
                 return
             model_id = interaction.data["values"][0]
             warning = await self._expensive_warning_for(model_id)
@@ -6318,7 +6321,7 @@ def _define_discord_view_classes() -> None:
             await self._switch_selected_model(interaction, model_id)
 
         async def _on_expensive_confirm(self, interaction: discord.Interaction):
-            if not await self._gate(interaction, resolved_msg=None, unauth_msg="You're not authorized~"):
+            if not await self._gate(interaction, resolved_msg=None, unauth_msg=_UNAUTHORIZED):
                 return
             if not self._pending_expensive_model:
                 await interaction.response.send_message("Model selection expired.", ephemeral=True)
@@ -6326,7 +6329,7 @@ def _define_discord_view_classes() -> None:
             await self._switch_selected_model(interaction, self._pending_expensive_model)
 
         async def _on_back(self, interaction: discord.Interaction):
-            if not await self._gate(interaction, resolved_msg=None, unauth_msg="You're not authorized~"):
+            if not await self._gate(interaction, resolved_msg=None, unauth_msg=_UNAUTHORIZED):
                 return
             self._build_provider_select()
             try:
@@ -6378,7 +6381,7 @@ def _define_discord_view_classes() -> None:
 
         async def _on_select(self, interaction: discord.Interaction):
             if not self._check_auth(interaction):
-                await interaction.response.send_message("⛔ You are not authorized to change this setting.", ephemeral=True)
+                await interaction.response.send_message(_UNAUTHORIZED, ephemeral=True)
                 return
             if self.resolved:
                 await interaction.response.defer()
@@ -6479,7 +6482,7 @@ def _define_discord_view_classes() -> None:
             """Resolve the clarify with a chosen option."""
             if not await self._gate(
                 interaction, resolved_msg="This prompt has already been answered~",
-                unauth_msg="You're not authorized to answer this prompt~",
+                unauth_msg=_UNAUTHORIZED,
             ):
                 return
             display_name = getattr(getattr(interaction, "user", None), "display_name", "user")
@@ -6510,7 +6513,7 @@ def _define_discord_view_classes() -> None:
             """Flip the clarify entry into text-capture mode."""
             if not await self._gate(
                 interaction, resolved_msg="This prompt has already been answered~",
-                unauth_msg="You're not authorized to answer this prompt~",
+                unauth_msg=_UNAUTHORIZED,
             ):
                 return
             # Don't pop: the gateway text-intercept needs the entry until the user types.

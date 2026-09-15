@@ -439,6 +439,20 @@ GATEWAY_SECRET_CAPTURE_UNSUPPORTED_MESSAGE = (
     "Secure secret entry is not supported over messaging. "
     "Load this skill in the local CLI to be prompted, or add the key to ~/.hermes/.env manually.")
 
+# One sentence for every "you may not press/run this" refusal on every platform (slash commands,
+# approval buttons, pickers, prompts). ``{platform}`` is the ``Platform.value`` for the
+# ``hermes pairing approve`` command (hermes_cli/subcommands/pairing.py) that lets the owner fix it.
+# Kept under 200 chars: Telegram's answerCallbackQuery truncates longer text.
+UNAUTHORIZED_ACTION_NOTICE = (
+    "This bot is private and you're not on its allowed list. If you own it, run "
+    "`hermes pairing approve {platform} <request-id>` on the host (`hermes pairing list` shows the id).")
+
+
+def unauthorized_action_notice(platform: Any) -> str:
+    """``UNAUTHORIZED_ACTION_NOTICE`` for a ``Platform`` member or its string name."""
+    name = getattr(platform, "value", platform)
+    return UNAUTHORIZED_ACTION_NOTICE.format(platform=str(name or "<platform>"))
+
 
 def safe_url_for_log(url: str, max_len: int = 80) -> str:
     """Return a URL string safe for logs (no query/fragment/userinfo)."""
