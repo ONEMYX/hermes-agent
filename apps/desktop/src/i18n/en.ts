@@ -727,7 +727,7 @@ export const en: Translations = {
       terminalFontReset: 'Use default',
       chatFontTitle: 'Chat Font',
       chatFontDesc:
-        'Choose an installed font for chat and the rest of the app. Handy for readability faces such as OpenDyslexic; leave blank to use the theme\'s font.',
+        "Choose an installed font for chat and the rest of the app. Handy for readability faces such as OpenDyslexic; leave blank to use the theme's font.",
       chatFontPlaceholder: 'OpenDyslexic or a CSS font stack',
       chatFontPreview: 'Preview',
       chatFontSample: 'The quick brown fox jumps over the lazy dog. 0123456789',
@@ -3861,19 +3861,142 @@ export const en: Translations = {
       react: 'React',
       dismissError: 'Dismiss error',
       errorLayers: {
-        auth: 'Authentication error',
+        auth: 'Sign-in problem',
         billing: 'Out of credits',
         disk: 'Disk full',
-        endpoint: 'Custom endpoint error',
-        gateway: 'Gateway error',
-        generic: 'Turn failed',
-        provider: 'Provider error',
-        runtime: 'Local runtime error',
-        streaming: 'Streaming connection error'
+        endpoint: "Can't reach your model server",
+        gateway: 'Hermes hit a problem',
+        generic: "Hermes couldn't finish this reply",
+        provider: 'The AI service returned an error',
+        runtime: 'Hermes hit a problem',
+        streaming: 'The reply was cut off'
       },
+      errorLayerBodies: {
+        auth: 'The AI service rejected your sign-in. Check the credentials for this provider, then retry.',
+        billing: 'Your account has no credits left for this provider. Top up or switch provider, then send again.',
+        disk: 'Your disk is full, so Hermes could not save this conversation. Free some space, then retry.',
+        endpoint: "Hermes can't reach your custom model server. Check that it is running, then retry.",
+        gateway: 'Hermes hit an internal problem starting this reply. Retry; if it keeps happening, send diagnostics.',
+        generic: 'Something went wrong while Hermes was replying. Retry, or copy the details if it keeps happening.',
+        provider: 'The AI service could not complete this request. Retry in a moment or switch provider.',
+        runtime: 'Hermes hit an internal problem starting this reply. Retry; if it keeps happening, send diagnostics.',
+        streaming: 'The connection dropped before the reply finished. Retry to send it again.'
+      },
+      errorCodes: {
+        auth: {
+          title: provider => `${provider} rejected your sign-in`,
+          body: provider => `The credentials saved for ${provider} were not accepted. Fix them, then retry.`
+        },
+        auth_permanent: {
+          title: provider => `${provider} rejected your sign-in`,
+          body: provider =>
+            `The credentials saved for ${provider} are invalid or were revoked. Update them or switch provider, then retry.`
+        },
+        billing: {
+          title: 'Out of credits',
+          body: provider => `Your ${provider} account has no credits left. Top up or switch provider, then send again.`
+        },
+        rate_limit: {
+          title: 'The AI service is busy',
+          body: provider => `${provider} is limiting requests right now. Wait a minute, then retry.`
+        },
+        upstream_rate_limit: {
+          title: 'The AI service is busy',
+          body: provider => `${provider} is limiting requests right now. Wait a minute, then retry.`
+        },
+        overloaded: {
+          title: 'The AI service is overloaded',
+          body: provider => `${provider} is having problems right now. Retry in a moment or switch provider.`
+        },
+        server_error: {
+          title: 'The AI service had a problem',
+          body: provider => `${provider} returned a server error. Retry in a moment or switch provider.`
+        },
+        timeout: {
+          title: 'The reply timed out',
+          body: provider => `${provider} did not answer in time. Retry to send it again.`
+        },
+        stream_drop: {
+          title: 'The reply was cut off',
+          body: 'The connection dropped before the reply finished. Retry to send it again.'
+        },
+        ssl_cert_verification: {
+          title: 'Secure connection failed',
+          body: provider =>
+            `Hermes could not verify the secure connection to ${provider}. Check your network or proxy settings, then retry.`
+        },
+        context_overflow: {
+          title: 'This conversation is too long',
+          body: 'The conversation no longer fits the model. Compress it or start a new chat, then send again.'
+        },
+        payload_too_large: {
+          title: 'This message is too large',
+          body: 'The request was too big for the model. Compress the conversation or start a new chat, then send again.'
+        },
+        model_not_found: {
+          title: 'This model is not available',
+          body: provider => `${provider} does not offer this model on your account. Choose another model, then retry.`
+        },
+        provider_policy_blocked: {
+          title: 'This model is blocked by your account settings',
+          body: provider =>
+            `${provider} would not route this request under your account's data or privacy settings. Choose another model or switch provider.`
+        },
+        content_policy_blocked: {
+          title: 'The AI service declined this request',
+          body: provider => `${provider} would not answer this message. Edit it and send again.`
+        },
+        format_error: {
+          title: 'The AI service rejected the request',
+          body: provider =>
+            `${provider} did not accept how this request was built. Retry once; if it happens again, send diagnostics.`
+        },
+        truncated: {
+          title: 'The reply was cut short',
+          body: 'The model stopped before finishing. Retry to get a complete reply.'
+        },
+        invalid_response: {
+          title: 'The AI service sent an unreadable reply',
+          body: provider => `${provider} returned something Hermes could not read. Retry in a moment.`
+        },
+        empty_response: {
+          title: 'The AI service sent an empty reply',
+          body: provider => `${provider} returned nothing for this message. Retry in a moment.`
+        },
+        loop_error: {
+          title: 'Hermes got stuck in a loop',
+          body: 'The reply kept repeating the same steps, so Hermes stopped it. Retry, or start a new chat if it happens again.'
+        },
+        SESSION_NOT_OWNED: {
+          title: 'This chat is open somewhere else',
+          body: 'This chat is currently open in another Hermes window or terminal. Close it there and retry, or start a new chat here.'
+        },
+        disk_full: {
+          title: 'Disk full',
+          body: 'Your disk is full, so Hermes could not save this conversation. Free some space, then retry.'
+        }
+      },
+      errorAuthKinds: {
+        api_key: {
+          title: provider => `${provider} rejected your API key`,
+          body: provider => `The key saved for ${provider} is invalid or was revoked. Update it, then retry.`
+        },
+        oauth: {
+          title: provider => `Your ${provider} sign-in expired`
+        }
+      },
+      errorDetails: 'Details',
+      errorGenericProvider: 'The AI service',
+      errorToastTitle: "Hermes couldn't finish the reply",
       errorRetry: 'Retry',
       errorStartNewSession: 'Start new session',
       errorSwitchProvider: 'Switch provider',
+      errorChooseModel: 'Choose a model',
+      errorCompressConversation: 'Compress conversation',
+      errorCompressFailed: 'Could not compress the conversation',
+      errorOpenHermesFolder: 'Open Hermes folder',
+      errorOpenHermesFolderFailed: 'Could not open the Hermes folder',
+      errorUpdateApiKey: 'Update API key',
       errorSignInAgain: provider => `Sign in to ${provider} again`,
       errorOauthExpired: provider =>
         `Your ${provider} sign-in has expired or was revoked. Sign in again to keep chatting.`,
