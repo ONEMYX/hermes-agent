@@ -23,7 +23,7 @@ from gateway.platforms.event import MessageEvent, MessageType
 from gateway.run_common import _UNSET
 from gateway.run_inbound_unauthorized import (
     PAIRING_RATE_LIMITED_REPLY, UnauthorizedOwnerNotifier, pairing_code_reply, pairing_profile_arg,
-    record_silent_pairing_request, unauthorized_owner_hint,
+    unauthorized_owner_hint,
 )
 from gateway.session import (
     SessionSource, is_shared_multi_user_session, neutralize_untrusted_inline_text
@@ -103,17 +103,11 @@ class GatewayInboundMixin:
 
     async def _hm_report_ignored_dm(self, source: SessionSource) -> None:
         """Unauthorized DM under behaviour ``ignore``: nothing goes to the sender. The owner gets the
-        approve command in the WARNING log and, once per sender, in the platform's home channel."""
+        sender's ID and the allowlist fix in the WARNING log and, once per sender, in the home channel."""
         from hermes_constants import display_hermes_home
         platform_name = source.platform.value if source.platform else "unknown"
-        pairing_store = self._pairing_store_for(source)
-        request_id = (
-            record_silent_pairing_request(pairing_store, platform_name, source.user_id, source.user_name or "")
-            if pairing_store is not None else None
-        )
         hint = unauthorized_owner_hint(
-            platform_name, source.user_id, source.user_name or "", request_id=request_id,
-            profile_arg=pairing_profile_arg(pairing_store), hermes_home=display_hermes_home(),
+            platform_name, source.user_id, source.user_name or "", hermes_home=display_hermes_home(),
         )
         logger.warning("Unauthorized user (ignored): %s", hint)
         notifier = getattr(self, "_unauthorized_owner_notifier", None)

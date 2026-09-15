@@ -4,10 +4,11 @@ Two audiences, two rules:
 
 * The **stranger** gets either a pairing code (behaviour ``pair``) or nothing at all (behaviour
   ``ignore``: an allowlist is configured, so any reply would leak that the bot exists).
-* The **owner** is the one who can fix a mis-typed allowlist or approve a request, so an ignored DM
-  is still recorded as a pending pairing request (server-side only; the code is discarded, nothing
-  is sent), logged at WARNING with the exact ``hermes pairing approve`` command, and surfaced once
-  per (platform, user) per gateway process in the platform's home channel when one is configured.
+* The **owner** is the one who can fix a mis-typed allowlist, so an ignored DM is logged at
+  WARNING with the sender's ID and the allowlist / pairing-mode fix, and surfaced once per
+  (platform, user) per gateway process in the platform's home channel when one is configured.
+  No pairing request is minted for an ignored sender: strangers must not create server state
+  when the owner has restricted access.
 """
 
 from __future__ import annotations
@@ -46,41 +47,24 @@ PAIRING_RATE_LIMITED_REPLY = (
     "Too many pairing requests right now. Wait a few minutes, then send your message again.")
 
 
-def record_silent_pairing_request(pairing_store, platform_name: str, user_id: str, user_name: str) -> str | None:
-    """Create (or reuse) a pending request for an ignored DM sender without telling them; returns
-    the request id the owner can approve (``hermes pairing approve <platform> <request-id>``), or
-    None when the store is rate-limited / full / locked out and no earlier request exists."""
-    def _mine():
-        rows = [p for p in pairing_store.list_pending(platform_name)
-                if str(p.get("user_id")) == str(user_id) and p.get("request_id")]
-        return rows[-1]["request_id"] if rows else None
-
-    existing = _mine()
-    if existing:
-        return existing
-    if pairing_store.generate_code(platform_name, user_id, user_name or "") is None:
-        return None
-    return _mine()
-
-
 def unauthorized_owner_hint(
-    platform_name: str, user_id: str, user_name: str = "", *, request_id: str | None,
-    profile_arg: str = "", hermes_home: str,
+    platform_name: str, user_id: str, user_name: str = "", *, hermes_home: str,
 ) -> str:
-    """One-line hint for the owner (log + home channel): who was dropped and how to let them in."""
+    """One-line hint for the owner (log + home channel): who was dropped and how to let them in.
+    No pairing request is minted for an ignored sender (a configured allowlist means the owner chose
+    to restrict access), so the ways in are the allowlist itself or switching the platform to
+    pairing mode."""
     who = f"{user_name} ({user_id})" if user_name else str(user_id)
-    approve = (
-        f"run `hermes {profile_arg}pairing approve {platform_name} {request_id}` on the host"
-        if request_id else f"run `hermes {profile_arg}pairing list` on the host to approve them"
-    )
     env_var = _allowlist_env_for_platform(platform_name)
     allowlist = (
-        f", or add the ID to {env_var} in {hermes_home}/.env and restart the gateway"
-        if env_var else ""
+        f"add the ID to {env_var} in {hermes_home}/.env and restart the gateway"
+        if env_var else "add the ID to this platform's allowed-users list and restart the gateway"
     )
     return (
-        f"Dropped a message from unrecognized {platform_name} user {who}. "
-        f"If that is you or someone you trust, {approve}{allowlist}."
+        f"Dropped a message from unrecognized {platform_name} user {who}. If that is you or someone "
+        f"you trust, {allowlist}; or set `unauthorized_dm_behavior: pair` for {platform_name} in "
+        f"{hermes_home}/config.yaml so unknown senders receive a pairing code you can approve with "
+        f"`hermes pairing approve {platform_name} <code>`."
     )
 
 

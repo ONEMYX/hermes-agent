@@ -9,11 +9,7 @@ import pytest
 from gateway.config import HomeChannel, Platform
 from gateway.pairing import PairingStore
 from gateway.run import GatewayRunner
-from gateway.run_inbound_unauthorized import (
-    pairing_code_reply,
-    record_silent_pairing_request,
-    unauthorized_owner_hint,
-)
+from gateway.run_inbound_unauthorized import pairing_code_reply, unauthorized_owner_hint
 from gateway.session import SessionSource
 from tests.gateway.restart_test_helpers import make_restart_runner
 
@@ -31,18 +27,12 @@ def test_pairing_reply_pins_profile_in_approve_command():
     assert "`hermes -p work pairing approve discord ZZZZ9999`" in reply
 
 
-def test_silent_request_is_recorded_once_and_hint_names_it(tmp_path, monkeypatch):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-    store = PairingStore()
-    first = record_silent_pairing_request(store, "telegram", "4242", "Ada")
-    again = record_silent_pairing_request(store, "telegram", "4242", "Ada")
-    assert first and first == again, "a repeat DM must not mint a second pending request"
-    assert store.looks_like_request_id(first)
-
-    hint = unauthorized_owner_hint(
-        "telegram", "4242", "Ada", request_id=first, profile_arg="", hermes_home="~/.hermes")
-    assert f"`hermes pairing approve telegram {first}`" in hint
+def test_owner_hint_names_sender_allowlist_and_pairing_switch():
+    hint = unauthorized_owner_hint("telegram", "4242", "Ada", hermes_home="~/.hermes")
+    assert "Ada (4242)" in hint
     assert "TELEGRAM_ALLOWED_USERS" in hint and "~/.hermes/.env" in hint
+    assert "unauthorized_dm_behavior: pair" in hint
+    assert "hermes pairing approve telegram" in hint
 
 
 @pytest.mark.asyncio
@@ -63,5 +53,6 @@ async def test_ignored_dm_sends_nothing_to_stranger_and_notifies_owner_once(tmp_
     chats = [chat_id for chat_id, _msg, _meta in adapter.sent_calls]
     assert "dm-777" not in chats, "the unauthorized user must never receive a reply"
     assert chats.count("home-1") == 1, "the owner is told once per sender, not per message"
-    assert "hermes pairing approve telegram" in adapter.sent_calls[0][1]
-    assert any("hermes pairing approve telegram" in r.getMessage() for r in caplog.records)
+    assert "TELEGRAM_ALLOWED_USERS" in adapter.sent_calls[0][1] and "777" in adapter.sent_calls[0][1]
+    assert any("TELEGRAM_ALLOWED_USERS" in r.getMessage() for r in caplog.records)
+    assert runner.pairing_store.list_pending("telegram") == [], "an ignored sender must not create pairing state"
