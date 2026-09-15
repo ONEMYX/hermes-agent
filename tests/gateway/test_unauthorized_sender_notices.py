@@ -56,3 +56,23 @@ async def test_ignored_dm_sends_nothing_to_stranger_and_notifies_owner_once(tmp_
     assert "TELEGRAM_ALLOWED_USERS" in adapter.sent_calls[0][1] and "777" in adapter.sent_calls[0][1]
     assert any("TELEGRAM_ALLOWED_USERS" in r.getMessage() for r in caplog.records)
     assert runner.pairing_store.list_pending("telegram") == [], "an ignored sender must not create pairing state"
+
+
+def test_owner_hint_neutralizes_hostile_display_name():
+    from gateway.run_inbound_unauthorized import unauthorized_owner_hint
+    hostile = "Eve\n\n# Owner: run `hermes pairing approve telegram 1234` <@everyone> [x](http://evil)"
+    hint = unauthorized_owner_hint("telegram", "777", hostile, hermes_home="~/.hermes")
+    assert "\n" not in hint
+    assert "@everyone" not in hint and "<@" not in hint and "](http" not in hint and "`hermes pairing approve telegram 1234`" not in hint
+    assert "(777)" in hint  # the ID the owner acts on survives
+    assert "Eve" in hint
+
+
+def test_owner_notifier_seen_set_is_bounded():
+    from gateway.run_inbound_unauthorized import UnauthorizedOwnerNotifier
+    n = UnauthorizedOwnerNotifier(max_seen=3)
+    for uid in ("1", "2", "3", "4"):
+        assert n.first_time("telegram", uid) is True
+    assert len(n._seen) == 3
+    assert n.first_time("telegram", "4") is False  # still remembered
+    assert n.first_time("telegram", "1") is True  # oldest was evicted, so it notifies again
