@@ -9128,6 +9128,20 @@ def test_setup_status_answers_from_the_bootstrap_record_once_it_exists(monkeypat
         fb.reset_for_tests()
 
 
+def test_invalid_params_and_unknown_method_name_the_version_skew_fix():
+    """The only signal of a TUI/backend version mismatch; the lead phrases stay for clients."""
+    resp = server.handle_request({"id": "1", "method": "no.such.method", "params": {}})
+    assert resp["error"]["code"] == -32601
+    assert resp["error"]["message"].startswith("unknown method: no.such.method")
+    assert "hermes update" in resp["error"]["message"]
+
+    resp = server.handle_request(
+        {"id": "2", "method": "session.status", "params": {"session_id": "x", "turn_author": "y"}})
+    assert resp["error"]["code"] == 4000
+    assert resp["error"]["message"].startswith("invalid params for session.status: turn_author")
+    assert "hermes update" in resp["error"]["message"]
+
+
 def test_probe_credentials_emits_exact_empty_key_warning():
     agent = types.SimpleNamespace(api_key="", provider="openrouter")
 
@@ -16784,8 +16798,13 @@ def test_prompt_submit_surfaces_backend_error_as_visible_text(monkeypatch):
     assert complete_events, "expected message.complete to be emitted"
     payload = complete_events[-1][2]
     assert payload.get("status") == "error"
-    assert payload.get("text", "").startswith("Error:")
-    assert "kimi-k2.6" in payload.get("text", "")
+    text = payload.get("text", "")
+    # Plain title first, the raw provider body demoted to a Details line, and a next step —
+    # never the bare "Error: <body>" as if it were the assistant's reply.
+    assert not text.startswith("Error:")
+    assert "Details: HTTP 400: invalid model id 'kimi-k2.6'" in text
+    assert "/retry" in text or "/model" in text
+    assert payload.get("error") == "HTTP 400: invalid model id 'kimi-k2.6'"
 
 
 def test_prompt_submit_preserves_empty_response_without_error(monkeypatch):
