@@ -35,9 +35,6 @@ from agent.retry_utils import parse_retry_after_seconds
 
 logger = logging.getLogger(__name__)
 
-# Every refusal (slash command, approval button, picker, prompt) says the same thing.
-_UNAUTHORIZED = unauthorized_action_notice(Platform.DISCORD)
-
 _DISCORD_MARKDOWN_LINK_LABEL_RE = re.compile(r"([\\\[\]])")
 _DISCORD_URL_LABEL_SCHEME_RE = re.compile(r"^https?://", re.IGNORECASE)
 
@@ -278,6 +275,9 @@ from gateway.platforms._shared import (
     env_is_connected as _env_is_connected, extra_or_secret as _extra_or_secret,
     platform_gate_env as _scoped_gate_env, send_error, yaml_env_setter as _yaml_env_setter
 )
+
+# Every refusal (slash command, approval button, picker, prompt) says the same thing.
+_UNAUTHORIZED = unauthorized_action_notice(Platform.DISCORD)
 
 
 async def _read_url_image_with_redirect_guard(
