@@ -29,11 +29,16 @@ LAYER_DISK = "disk"
 
 # failure_reason → UI layer. Unlisted reasons fall back to LAYER_PROVIDER:
 # every FailoverReason comes from classifying a provider call. Loop-site codes
-# (agent/turn_failure_copy.py::SITE_FAILURE_CODES) that are not provider verdicts
-# map to the gateway layer so the client does not offer "Switch provider".
+# (agent/turn_failure_copy.py::SITE_FAILURE_CODES) are listed explicitly: the
+# ones that are not provider verdicts map to the gateway layer so the client
+# does not offer "Switch provider"; the ones the model/provider caused
+# (cut-off output, empty or broken reply) stay on the provider layer, where the
+# clients' per-code copy names the real fix (`continue`, smaller steps, /retry).
 _REASON_TO_LAYER = {
     "auth": LAYER_AUTH, "auth_permanent": LAYER_AUTH, "billing": LAYER_BILLING, "billing_unverified": LAYER_BILLING,
-    "loop_error": LAYER_GATEWAY, "interpreter_shutdown": LAYER_GATEWAY,
+    "loop_error": LAYER_GATEWAY, "interpreter_shutdown": LAYER_GATEWAY, "session_busy": LAYER_GATEWAY,
+    "truncated": LAYER_PROVIDER, "empty_response": LAYER_PROVIDER, "invalid_response": LAYER_PROVIDER,
+    "context_overflow": LAYER_PROVIDER,  # a bigger-window model IS the fix, so Switch provider applies
 }
 
 # Failures between us and the base_url (not a provider verdict); on a

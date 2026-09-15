@@ -1795,18 +1795,22 @@ def _final_response_from_result(result: dict, job_id: str, job_name: str, AIAgen
             from hermes_state_errors import PERSISTENCE_ERROR_CAUSES as _causes
         except Exception:
             _causes = ("locked", "disk", "unknown")
+        # The finalizer fills the model name into the explainer; render with the same name (and
+        # the bare form) or the comparison below misses and the warning is delivered.
+        _model = str(result.get("model") or "")
         for _cause in (None, *_causes):
-            try:
-                _variant = AIAgent._format_turn_completion_explanation(turn_exit_reason, _cause)
-            except TypeError:
+            for _kwargs in ({"model": _model}, {}):
                 try:
-                    _variant = AIAgent._format_turn_completion_explanation(turn_exit_reason)
+                    _variant = AIAgent._format_turn_completion_explanation(turn_exit_reason, _cause, **_kwargs)
+                except TypeError:
+                    try:
+                        _variant = AIAgent._format_turn_completion_explanation(turn_exit_reason)
+                    except Exception:
+                        _variant = ""
                 except Exception:
                     _variant = ""
-            except Exception:
-                _variant = ""
-            if _variant:
-                _explainer_variants.append(_variant.strip())
+                if _variant:
+                    _explainer_variants.append(_variant.strip())
         if final_response.strip() in _explainer_variants:
             logger.info(
                 "Job '%s': abnormal empty turn (%s) — suppressing explainer for cron delivery",

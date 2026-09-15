@@ -15,6 +15,7 @@ from agent.error_classifier import classify_api_error
 from agent.error_surface import LAYER_GATEWAY, LAYER_PROVIDER, build_error_surface_from_result
 from agent.turn_loop_errors import handle_outer_loop_error
 from agent.turn_recovery import max_retries_exhausted_result, nonretryable_client_error_result
+from agent.turn_failure_copy import SITE_FAILURE_CODES, provider_label_for
 from agent.turn_response_check import retry_invalid_response
 
 
@@ -129,11 +130,30 @@ def test_outer_loop_error_copy_has_no_apology_and_routes_to_gateway_layer():
     assert text.rstrip().endswith("expected str, got list")  # raw detail last, not first
     from agent.turn_failure_copy import exit_reason_failure
 
-    reason, retryable = exit_reason_failure(verdict._turn_exit_reason)
+    exit_failure = exit_reason_failure(verdict._turn_exit_reason)
+    assert exit_failure.fails_turn is True  # the outer-error cap IS a failed turn
     surface = build_error_surface_from_result(
-        {"failed": True, "error": text, "failure_reason": reason, "failure_retryable": retryable}
+        {"failed": True, "error": text, "failure_reason": exit_failure.reason,
+         "failure_retryable": exit_failure.retryable}
     )
     assert surface["layer"] == LAYER_GATEWAY and surface["code"] == "loop_error"
+
+
+def test_invalid_response_copy_never_names_a_model_id_as_the_provider():
+    """describe_invalid_response falls back to 'model=<id>' for OpenRouter bodies; that is not a
+    provider name and must not be spliced into the sentence."""
+    agent = _Agent()
+    response = SimpleNamespace(error=None, choices=[], model="anthropic/claude-opus")
+    verdict = retry_invalid_response(
+        agent, response=response, error_details=["no choices"],
+        _retry=SimpleNamespace(restart_with_redirected_messages=False), thinking_spinner=None,
+        messages=[], api_messages=[], api_kwargs=None, active_system_prompt=None, conversation_history=None,
+        retry_count=2, max_retries=3, compression_attempts=0, api_call_count=1, api_request_id="r",
+        api_start_time=0.0, api_duration=0.4, effective_task_id="t", turn_id="turn",
+    )
+    text = verdict.result["final_response"]
+    assert "model=" not in text
+    assert text.startswith(provider_label_for(agent.provider))
 
 
 def test_interpreter_shutdown_copy_substitutes_the_real_session_id():
@@ -148,8 +168,22 @@ def test_interpreter_shutdown_copy_substitutes_the_real_session_id():
     assert "<session-id>" not in verdict.final_response
 
 
-@pytest.mark.parametrize("code", ["context_overflow", "truncated", "invalid_response", "empty_response", "loop_error"])
+@pytest.mark.parametrize("code", sorted(SITE_FAILURE_CODES))
 def test_site_failure_codes_never_collapse_to_unknown(code):
+    """Every site code is listed in error_surface's layer table (no fall-through guesswork)."""
+    from agent.error_surface import _REASON_TO_LAYER
+
     surface = build_error_surface_from_result({"failed": True, "error": "x", "failure_reason": code})
     assert surface["code"] == code
+    assert code in _REASON_TO_LAYER
     assert surface["layer"] in (LAYER_GATEWAY, LAYER_PROVIDER)
+
+
+def test_model_caused_codes_stay_on_the_provider_layer_and_runtime_codes_on_gateway():
+    """Cut-off / empty / broken replies come from the model (provider layer, so the client's
+    per-code copy applies); a busy session or loop bug is Hermes-side (gateway layer, so the
+    client never offers Switch provider for it)."""
+    layers = {c: build_error_surface_from_result({"failed": True, "error": "x", "failure_reason": c})["layer"]
+              for c in ("truncated", "empty_response", "invalid_response", "session_busy", "loop_error")}
+    assert layers["truncated"] == layers["empty_response"] == layers["invalid_response"] == LAYER_PROVIDER
+    assert layers["session_busy"] == layers["loop_error"] == LAYER_GATEWAY

@@ -1385,12 +1385,14 @@ class GatewayTurnMixin:
             response = ""
         _intentional_silence = self._is_intentional_silence(agent_result, response)
 
-        # "(empty)" = the model produced no visible content after exhausting all retries.
+        # "(empty)" = the model produced no visible content after exhausting all retries. One
+        # text with the CLI explainer and the desktop (agent/turn_explainers.py) so the user
+        # reads the same words on every surface.
         if response == "(empty)" and not _intentional_silence:
-            response = (
-                "⚠️ The model returned no response after processing tool results. This can happen "
-                "with some models — try again or rephrase your question."
-            )
+            from agent.turn_explainers import EMPTY_RESPONSE_EXPLANATION
+
+            _model = str(agent_result.get("model") or "").strip() or "The model"
+            response = "⚠️ " + EMPTY_RESPONSE_EXPLANATION.format(model=_model)
         agent_messages = agent_result.get("messages", [])
         logger.info(
             "response ready: platform=%s chat=%s time=%.1fs api_calls=%d response=%d chars",

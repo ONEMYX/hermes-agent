@@ -6,9 +6,13 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from agent.error_surface import build_error_surface_from_result
 from agent.turn_explainers import EMPTY_RESPONSE_EXPLANATION, TurnExplainersMixin
-from agent.turn_failure_copy import exit_reason_failure, site_copy
+from agent.turn_failure_copy import (
+    SITE_FAILURE_CODES, exit_reason_failure, failure_cause_gloss, site_copy,
+)
 from agent.turn_overflow import _Recovery
 
 
@@ -43,10 +47,11 @@ def test_payload_and_context_overflow_share_one_next_step():
     assert ("/new" in a) and ("/compress" in a) and ("/new" in b) and ("/compress" in b)
 
 
-def test_empty_response_exhaustion_is_a_failed_turn_with_one_text_everywhere():
+def test_empty_response_exhaustion_has_one_text_everywhere():
     """One constant feeds the CLI explainer and the gateway '(empty)' rewrite; no surface
     asserts 'after processing tool results' or 'inspect the tool output above'."""
-    assert exit_reason_failure("empty_response_exhausted") == ("empty_response", True)
+    verdict = exit_reason_failure("empty_response_exhausted")
+    assert (verdict.reason, verdict.retryable) == ("empty_response", True)
     text = TurnExplainersMixin._format_turn_completion_explanation("empty_response_exhausted", model="llama3")
     assert text.startswith("⚠️ No reply: ") and "llama3" in text
     assert "/model" in text and "continue" in text
@@ -66,3 +71,42 @@ def test_reasoning_only_copy_gives_the_fix_before_the_scratchpad():
     text = site_copy("reasoning_only", model="r1", preview="the answer is 42")
     assert text.index("/reasoning low") < text.index("the answer is 42")
     assert "/model" in text
+
+
+@pytest.mark.parametrize("exit_reason", ["empty_response_exhausted", "local_processing_error(TypeError)"])
+def test_advisory_exit_reasons_stamp_a_code_but_never_flip_failed(exit_reason):
+    """Cron silence, the kanban dispatcher breaker and gateway transcript persistence all key
+    on ``failed``; these two exits must keep failed=False and only gain the descriptor code."""
+    verdict = exit_reason_failure(exit_reason)
+    assert verdict is not None and verdict.fails_turn is False
+    assert verdict.reason in SITE_FAILURE_CODES
+
+
+@pytest.mark.parametrize("exit_reason, code", [
+    ("context_compression_timeout", "context_overflow"),
+    ("ollama_runtime_context_too_small", "context_overflow"),
+    ("redirect_restart_limit_exceeded", "loop_error"),
+    ("rebuilt_restart_limit_exceeded", "loop_error"),
+])
+def test_previously_bare_exit_reasons_now_carry_a_code(exit_reason, code):
+    verdict = exit_reason_failure(exit_reason)
+    assert verdict is not None and verdict.reason == code
+    assert build_error_surface_from_result(
+        {"failed": True, "error": "x", "failure_reason": verdict.reason, "failure_retryable": verdict.retryable}
+    )["code"] == code
+
+
+def test_every_failure_code_copy_key_is_a_failure_code():
+    """The copy table split: keys of the failure-code table are exactly codes the descriptor
+    contract lists (one-off strings live in their own table)."""
+    from agent.turn_failure_copy import _FAILURE_CODE_COPY, _ONE_OFF_COPY
+
+    assert set(_FAILURE_CODE_COPY) <= SITE_FAILURE_CODES
+    assert not (set(_ONE_OFF_COPY) & SITE_FAILURE_CODES)
+    assert "loop_error" in _FAILURE_CODE_COPY and "local_processing_error" in _ONE_OFF_COPY
+
+
+def test_cause_gloss_substitutes_the_subject_and_skips_unknown_reasons():
+    assert "the job's" in failure_cause_gloss("context_overflow", subject="this job", possessive="the job's")
+    assert failure_cause_gloss("model_not_found").startswith("the model it uses")
+    assert failure_cause_gloss("unknown") is None and failure_cause_gloss(None) is None

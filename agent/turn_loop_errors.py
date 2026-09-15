@@ -153,11 +153,11 @@ def handle_outer_loop_error(
         or _outer_error_count >= _outer_error_cap
     ):
         # finalize_turn stamps failure_reason=loop_error from the exit reason so the desktop
-        # card stops reading these as "unknown"/retryable; the deterministic local bug is a
-        # failed turn too (a bare Retry reproduces it).
+        # card stops reading these as "unknown"/retryable. The deterministic local bug keeps
+        # ``failed`` as it was (an incomplete, not failed, turn): flipping it made every such
+        # child run a strike against the kanban dispatcher breaker.
         detail = short_detail(e)
         if _is_local_processing_error:
-            failed = True
             _turn_exit_reason = f"local_processing_error({error_msg[:80]})"
             final_response = site_copy("local_processing_error", detail=detail)
         elif _outer_error_count >= _outer_error_cap:

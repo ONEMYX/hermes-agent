@@ -9,7 +9,7 @@ trailing "Provider said:" / "Details:" line.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, NamedTuple, Optional, Tuple
 
 from agent.error_classifier import FailoverReason
 from hermes_constants import display_hermes_home
@@ -17,7 +17,7 @@ from hermes_constants import display_hermes_home
 # Failure codes minted by loop sites that are not provider verdicts (see module docstring).
 SITE_FAILURE_CODES = frozenset({
     "context_overflow", "truncated", "invalid_response", "empty_response", "loop_error",
-    "interpreter_shutdown",
+    "interpreter_shutdown", "session_busy",
 })
 
 
@@ -37,15 +37,34 @@ def provider_label_for(provider: Any) -> str:
 
 # ---- turn_exit_reason → failure verdict (finalize_turn stamps these) --------------------------
 
-# (exit-reason prefix, failure_reason, retryable). Prefix match: several reasons carry a
-# parenthesised detail (``local_processing_error(...)``).
-_EXIT_REASON_FAILURES: Tuple[Tuple[str, str, bool], ...] = (
-    ("empty_response_exhausted", "empty_response", True),
-    ("all_retries_exhausted_no_response", FailoverReason.server_error.value, True),
-    ("interpreter_shutdown", "interpreter_shutdown", False),
-    ("local_processing_error", "loop_error", False),
-    ("repeated_outer_errors", "loop_error", True),
-    ("error_near_max_iterations", "loop_error", True),
+class ExitFailure(NamedTuple):
+    """Verdict for a loop exit. ``fails_turn`` False = advisory: the descriptor fields are
+    stamped so Desktop/TUI show a specific code, but ``failed``/``completed`` keep the values
+    the loop chose — cron silence, the kanban dispatcher breaker and gateway transcript
+    persistence all key on ``failed`` and must not change because a code was added."""
+
+    reason: str
+    retryable: bool
+    fails_turn: bool = True
+
+
+# (exit-reason prefix, failure_reason, retryable, fails_turn). Prefix match: several reasons
+# carry a parenthesised detail (``local_processing_error(...)``).
+_EXIT_REASON_FAILURES: Tuple[Tuple[str, str, bool, bool], ...] = (
+    # Advisory: the reasoning-only text may literally be the answer, and cron stays silent.
+    ("empty_response_exhausted", "empty_response", True, False),
+    ("all_retries_exhausted_no_response", FailoverReason.server_error.value, True, True),
+    ("interpreter_shutdown", "interpreter_shutdown", False, True),
+    # Advisory: a deterministic local bug is not a task failure for the kanban breaker.
+    ("local_processing_error", "loop_error", False, False),
+    ("repeated_outer_errors", "loop_error", True, True),
+    ("error_near_max_iterations", "loop_error", True, True),
+    ("context_compression_timeout", "context_overflow", False, True),
+    ("context_compression_exhausted", "context_overflow", False, True),
+    ("ollama_runtime_context_too_small", "context_overflow", False, True),
+    # Advisory: the loop ends these as an incomplete (not failed) turn with an explainer.
+    ("redirect_restart_limit_exceeded", "loop_error", True, False),
+    ("rebuilt_restart_limit_exceeded", "loop_error", True, False),
 )
 
 
@@ -72,12 +91,12 @@ def invalid_response_failure_reason(response: Any) -> str:
         return "invalid_response"
 
 
-def exit_reason_failure(turn_exit_reason: Any) -> Optional[Tuple[str, bool]]:
-    """``(failure_reason, retryable)`` for a loop exit that is a failed turn, else None."""
+def exit_reason_failure(turn_exit_reason: Any) -> Optional[ExitFailure]:
+    """:class:`ExitFailure` for a loop exit that carries a failure verdict, else None."""
     reason = str(turn_exit_reason or "")
-    for prefix, code, retryable in _EXIT_REASON_FAILURES:
+    for prefix, code, retryable, fails_turn in _EXIT_REASON_FAILURES:
         if reason.startswith(prefix):
-            return code, retryable
+            return ExitFailure(code, retryable, fails_turn)
     return None
 
 
@@ -127,7 +146,7 @@ _NONRETRYABLE_DEFAULT_COPY = (
 _AUTH_COPY: Dict[str, str] = {
     "oauth": (
         "{label} rejected your sign-in, so the model can't be reached. Sign in again: "
-        "`hermes portal` for Nous, `hermes auth` for other accounts."
+        "`hermes portal` for Nous, `hermes auth add <provider> --type oauth` for other accounts."
     ),
     "api_key": (
         "{label} rejected your API key, so the model can't be reached. Update it in "
@@ -140,13 +159,67 @@ CONTENT_POLICY_NEXT_STEPS = (
     "model with /model."
 )
 
-# Site-code copy (deterministic loop outcomes, not provider verdicts).
-_SITE_COPY: Dict[str, str] = {
+# ---- one reason → "what happened" gloss, shared by cron, subagent and chat notices ------------
+
+# FailoverReason / site code → one clause (no HTTP codes, no "provider" jargon). ``{subject}``
+# is who was asking ("the job", "it"), ``{possessive}`` its possessive ("the job's", "its").
+# Reasons absent here are NOT provider-shaped; callers fall back to the raw error text.
+FAILURE_CAUSE_GLOSS: Dict[str, str] = {
+    FailoverReason.timeout.value: "the AI model service did not respond in time",
+    FailoverReason.rate_limit.value: "the AI model service was rate-limited (too many requests)",
+    FailoverReason.upstream_rate_limit.value: "the AI model service was rate-limited (too many requests)",
+    FailoverReason.overloaded.value: "the AI model service is overloaded right now",
+    FailoverReason.server_error.value: "the AI model service returned an internal error",
+    FailoverReason.billing.value: "the AI model service says the account's usage or credit limit is reached",
+    # Wire-level billing code (not a FailoverReason) that error_surface routes to the billing layer.
+    "billing_unverified": "the AI model service says the account's usage or credit limit is reached",
+    FailoverReason.auth.value: "the AI model service rejected the sign-in",
+    FailoverReason.auth_permanent.value: "the AI model service rejected the sign-in",
+    FailoverReason.model_not_found.value: "the model {subject} uses was not found at the AI model service",
+    FailoverReason.content_policy_blocked.value: "the AI model service's safety filter rejected the request",
+    "context_overflow": "{possessive} request grew too large for the model",
+    "payload_too_large": "{possessive} request grew too large for the model",
+}
+
+
+def failure_cause_gloss(reason: Any, *, subject: str = "it", possessive: str = "its") -> Optional[str]:
+    """Plain clause for a classified ``failure_reason``; None when the reason has no gloss."""
+    template = FAILURE_CAUSE_GLOSS.get(str(reason or ""))
+    return template.format(subject=subject, possessive=possessive) if template else None
+
+
+# ---- site-code copy -------------------------------------------------------------------------
+
+# Chat copy for the codes in SITE_FAILURE_CODES that a loop site renders itself
+# (``empty_response`` is worded by agent/turn_explainers.py, ``session_busy`` by the lease).
+_FAILURE_CODE_COPY: Dict[str, str] = {
     "context_overflow": (
         "This conversation has grown too long for {model} to read, and Hermes couldn't shrink "
         "it enough automatically. Start a new session with /new (your history is kept), or try "
         "/compress once more. Switching to a model with a bigger context window also works."
     ),
+    "truncated": (
+        "The model's reply was cut off before it finished (it hit its output length limit), so "
+        "Hermes didn't run the incomplete action. Nothing was changed. Send `continue`, ask for "
+        "the work in smaller steps, or raise max_tokens for this model."
+    ),
+    "invalid_response": (
+        "{label} sent back an empty or broken reply {attempts} times — it is probably overloaded "
+        "or rate-limiting you. " + _NEXT_STEPS_RETRY + "\n\nDetails: {detail}"
+    ),
+    "loop_error": (
+        "Hermes hit repeated errors and stopped this turn so it wouldn't keep retrying. "
+        + _NEXT_STEPS_LOOP + "\n\nDetails: {detail}"
+    ),
+    "interpreter_shutdown": (
+        "Hermes was shutting down and stopped this turn. Your conversation is saved — reopen "
+        "it{resume} and send your message again."
+    ),
+}
+
+# One-off outcome strings: deterministic loop exits that are NOT failure codes (the result
+# they ride carries a code from the table above, or none at all).
+_ONE_OFF_COPY: Dict[str, str] = {
     "payload_too_large": (
         "This conversation (including attachments) has grown too large to send to {model}, and "
         "Hermes couldn't shrink it enough automatically. Start a new session with /new (your "
@@ -157,31 +230,15 @@ _SITE_COPY: Dict[str, str] = {
         "your settings (compression.enabled). Run /compress to shrink it now, /new to start "
         "fresh, or pick a model with a bigger context window."
     ),
-    "truncated": (
-        "The model's reply was cut off before it finished (it hit its output length limit), so "
-        "Hermes didn't run the incomplete action. Nothing was changed. Send `continue`, ask for "
-        "the work in smaller steps, or raise max_tokens for this model."
-    ),
     "stream_dropped_tool_call": (
         "The connection to {label} kept dropping while the model was writing a large action, "
         "so nothing was run. Check your network and send /retry; asking for the file in smaller "
         "pieces also helps."
     ),
-    "invalid_response": (
-        "{label} sent back an empty or broken reply {attempts} times — it is probably overloaded "
-        "or rate-limiting you. " + _NEXT_STEPS_RETRY + "\n\nDetails: {detail}"
-    ),
-    "loop_error": (
-        "Hermes hit repeated errors and stopped this turn so it wouldn't keep retrying. "
-        + _NEXT_STEPS_LOOP + "\n\nDetails: {detail}"
-    ),
+    # Rides failure_reason="loop_error" (advisory; the turn is incomplete, not failed).
     "local_processing_error": (
         "Hermes hit an internal error while handling the model's reply and stopped this turn. "
         + _NEXT_STEPS_LOOP + "\n\nDetails: {detail}"
-    ),
-    "interpreter_shutdown": (
-        "Hermes was shutting down and stopped this turn. Your conversation is saved — reopen "
-        "it{resume} and send your message again."
     ),
     "reasoning_only": (
         "⚠️ {model} spent all of its output budget thinking and never wrote an answer. Lower "
@@ -197,10 +254,11 @@ _SITE_COPY: Dict[str, str] = {
         "a backup provider with `hermes fallback add`."
     ),
 }
+_SITE_COPY: Dict[str, str] = {**_FAILURE_CODE_COPY, **_ONE_OFF_COPY}
 
 
 def site_copy(code: str, **fields: Any) -> str:
-    """Chat copy for a site code; unknown fields default to empty strings."""
+    """Chat copy for a failure code or one-off loop outcome; unknown fields default to empty strings."""
     fields.setdefault("home", display_hermes_home())
     return _SITE_COPY[code].format_map(_Defaults(fields))
 
