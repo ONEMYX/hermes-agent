@@ -20,11 +20,37 @@ import { $notifications, clearNotifications } from './notifications'
 
 beforeEach(() => clearNotifications())
 
-// The CLI's "Installation blocked: Blocked (community source + caution verdict,
-// 2 findings). Use --force to override." tail is the only signal the Desktop
-// gets; the toast must turn it into a cause and a next step — `--force` does
-// not exist on the Desktop route, so it must never be the remedy shown.
-test('a scan-gate block parses into findings + trust and toasts a plain explanation', () => {
+// The CLI's blocked-install tail is the only signal the Desktop gets; the toast
+// must turn it into a cause and a next step — `--force` does not exist on the
+// Desktop route, so it must never be the remedy shown.
+
+// Current CLI (`hermes_cli/skills_hub.py::_scan_block_message`): "Not installed:"
+// label + plain sentence; the "never installs unverified" clause marks the
+// hard-block (unverified source) case.
+test('the current CLI "Not installed:" tail parses into findings + trust', () => {
+  const hardBlock = [
+    'Scan: 3 findings. Verdict: DANGEROUS',
+    "Not installed: the security scan found 3 high-risk pattern(s) in 'org/skill' (listed above). " +
+      'Hermes never installs unverified skills with high-risk findings, even with --force. ' +
+      'Review the findings or ask the author to fix them; to read the skill without installing, run `hermes skills inspect org/skill`.'
+  ]
+
+  expect(parseInstallBlocked(hardBlock)).toEqual({ findings: 3, unverified: true })
+
+  // Console wrapping can split the sentence across log lines.
+  const wrapped = [
+    'Not installed: the security scan found 1',
+    "high-risk pattern(s) in 'org/skill' (listed above). Re-run with --force to install anyway."
+  ]
+
+  expect(parseInstallBlocked(wrapped)).toEqual({ findings: 1, unverified: false })
+
+  // No count in the sentence when the scanner reported a verdict without findings.
+  const uncounted = ["Not installed: the security scan found high-risk patterns in 'org/skill' (listed above). Re-run with --force to install anyway."]
+  expect(parseInstallBlocked(uncounted)).toEqual({ findings: 0, unverified: false })
+})
+
+test('the legacy "Installation blocked:" tail still parses and toasts a plain explanation', () => {
   const lines = [
     'Quarantined to quarantine/abc',
     'Scan: 2 findings. Verdict: CAUTION',

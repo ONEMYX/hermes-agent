@@ -185,22 +185,45 @@ export function closeHubLog(): void {
   $hubActiveLog.set(null)
 }
 
-// `hermes skills install` prints "Installation blocked: Blocked (community
-// source + caution verdict, 2 findings). Use --force to override." and exits
-// non-zero when the security scan gate refuses. That CLI tail is the only
-// signal the Desktop gets, so parse it into a structured failure the toast
-// can explain (tools-runtime-21). `--force` has no Desktop route, so the
-// remedy offered is reading the scan, not overriding it.
-const INSTALL_BLOCKED_RE = /Installation blocked:.*?\((?<source>[a-z_-]+) source \+ (?<verdict>[a-z_]+) verdict, (?<findings>\d+) findings?\)/i
+// `hermes skills install` exits non-zero when the security scan gate refuses,
+// and its printed tail is the only signal the Desktop gets, so parse it into a
+// structured failure the toast can explain (tools-runtime-21). `--force` has
+// no Desktop route, so the remedy offered is reading the scan, not overriding
+// it. Two CLI shapes exist (`hermes_cli/skills_hub.py::_scan_block_message`):
+//   current: "Not installed: the security scan found 2 high-risk pattern(s) in
+//            'org/skill' (listed above). Hermes never installs unverified
+//            skills with high-risk findings, even with --force. ..."
+//            (the "never installs unverified" sentence only appears for a
+//            non-official source; otherwise it says "Re-run with --force").
+//   legacy:  "Installation blocked: Blocked (community source + caution
+//            verdict, 2 findings). Use --force to override."
+// The console may wrap the sentence, so whitespace between words is `\s+`.
+const INSTALL_BLOCKED_CURRENT_RE =
+  /Not installed:\s+the security scan found\s+(?:(?<findings>\d+)\s+)?high-risk\s+pattern/i
+
+const INSTALL_BLOCKED_UNVERIFIED_RE = /never installs\s+unverified/i
+
+const INSTALL_BLOCKED_LEGACY_RE =
+  /Installation blocked:.*?\((?<source>[a-z_-]+) source \+ (?<verdict>[a-z_]+) verdict, (?<findings>\d+) findings?\)/i
 
 export function parseInstallBlocked(lines: readonly string[]): { findings: number; unverified: boolean } | null {
-  const match = lines.join('\n').match(INSTALL_BLOCKED_RE)
+  const text = lines.join('\n')
+  const current = text.match(INSTALL_BLOCKED_CURRENT_RE)
 
-  if (!match?.groups) {
+  if (current?.groups) {
+    return {
+      findings: current.groups.findings ? Number(current.groups.findings) : 0,
+      unverified: INSTALL_BLOCKED_UNVERIFIED_RE.test(text)
+    }
+  }
+
+  const legacy = text.match(INSTALL_BLOCKED_LEGACY_RE)
+
+  if (!legacy?.groups) {
     return null
   }
 
-  return { findings: Number(match.groups.findings), unverified: match.groups.source !== 'official' }
+  return { findings: Number(legacy.groups.findings), unverified: legacy.groups.source !== 'official' }
 }
 
 export class HubInstallBlockedError extends Error {
