@@ -3104,14 +3104,16 @@ class HermesCLI(CLIProcessNotificationsMixin, CLIAgentSetupMixin, CLICommandsMix
     def _show_tool_availability_warnings(self):
         """Warn about toolsets switched off at startup (missing API keys, unusable terminal backend)."""
         try:
+            # Runs on a daemon thread on the snapshot fast path: keep the imports to modules the
+            # registry walk already loaded plus the pure notices module (a heavy import here races
+            # importlib's module locks against the main thread).
             from model_tools import check_tool_availability
-            from hermes_cli.doctor_tools import _enabled_cli_toolsets_for_doctor
             from hermes_cli.tool_availability_notices import current_terminal_backend, tool_availability_warning_lines
             from tools.terminal_tool import terminal_backend_unavailable_reason
 
             _, unavailable = check_tool_availability()
-            # Only toolsets this CLI session actually has (banner/doctor use the same filter).
-            enabled = {str(t) for t in (self.enabled_toolsets or [])} or _enabled_cli_toolsets_for_doctor()
+            # Only toolsets this CLI session actually has (same filter as the banner grid).
+            enabled = {str(t) for t in (self.enabled_toolsets or [])}
             if enabled:
                 unavailable = [u for u in unavailable if str(u.get("name", "")) in enabled]
             lines = tool_availability_warning_lines(
