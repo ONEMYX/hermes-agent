@@ -2860,18 +2860,21 @@ class HermesCLI(CLIProcessNotificationsMixin, CLIAgentSetupMixin, CLICommandsMix
             # the store before relying on resume.
             self._session_db_unavailable = True
             logger.warning("Failed to initialize SessionDB — session will NOT be indexed for search: %s", e)
+            from hermes_state_user_copy import describe_storage_failure, storage_failure_details
+            failure = describe_storage_failure(e)
             try:
                 Console(stderr=True).print(
                     "[bold yellow]⚠ Session store unavailable[/bold yellow] — "
-                    "this conversation will [bold]NOT be saved[/bold] to disk and "
-                    "cannot be resumed later. Searching past sessions is also disabled.\n"
-                    f"  Reason: {e}\n"
-                    "  Fix the state.db store (e.g. `hermes update` to rebuild the venv) to restore persistence."
+                    "this conversation will [bold]NOT be saved[/bold] and cannot be resumed later. "
+                    "Searching past sessions is also disabled.\n"
+                    f"  Reason: {failure.gloss}.\n"
+                    f"  {failure.action}\n"
+                    f"  [dim]Details: {storage_failure_details(e)}[/dim]"
                 )
             except Exception:
                 print(
                     "WARNING: Session store unavailable — this conversation will NOT be "
-                    f"saved to disk and cannot be resumed later. Reason: {e}"
+                    f"saved and cannot be resumed later. Reason: {failure.gloss}. {failure.action}"
                 )
         _run_state_db_auto_maintenance(self._session_db)
         _run_checkpoint_auto_maintenance()

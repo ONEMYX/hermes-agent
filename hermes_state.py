@@ -336,12 +336,17 @@ def _strip_stale_tool_call_markers(messages: List[Dict[str, Any]]) -> List[Dict[
 
 
 def format_session_db_unavailable(prefix: str = "Session database not available") -> str:
-    """User-facing message with the captured init cause (+ WAL-docs hint for NFS/SMB locking failures)."""
+    """User-facing message: plain cause + the repair command; the raw init error stays in the logs.
+    Network filesystems (NFS/SMB/FUSE/ZFS) cannot host SQLite's WAL; name that when the cause says so."""
     cause = get_last_init_error()
     if not cause:
         return f"{prefix}."
-    hint = " (state.db may be on NFS/SMB/FUSE/ZFS — see https://www.sqlite.org/wal.html)"
-    return f"{prefix}: {cause}{hint if any(m in cause.lower() for m in _WAL_INCOMPAT_MARKERS) else ''}."
+    from hermes_state_user_copy import describe_storage_failure
+    failure = describe_storage_failure(cause)
+    hint = ""
+    if any(m in cause.lower() for m in _WAL_INCOMPAT_MARKERS):
+        hint = " If state.db lives on a network drive (NFS/SMB/FUSE/ZFS), move it to a local disk."
+    return f"{prefix}: {failure.gloss}. {failure.action}{hint}"
 
 
 # Auto-repair at most once per DB path per process (no repair loops; serialises concurrent
@@ -659,13 +664,12 @@ class SessionDB(
         except OSError:
             zsize = -1
         qpath = quarantine_invalid_state_db(self.db_path, already_locked=already_locked)
+        where = f"moved aside to {qpath}" if qpath else "left in place (it could not be moved aside)"
         msg = (
-            f"state.db has no SQLite header ({zsize} bytes). "
-            f"Preserved at {qpath or '(quarantine failed — file left in place)'}. "
-            f"Restore from {self.db_path.parent / 'state-snapshots'} via `hermes snapshot list` / "
-            f"`hermes snapshot restore <id>` if available, or salvage the preserved bytes with "
-            f"`hermes sessions recover --source {qpath or self.db_path}`. "
-            "Opening a fresh empty database so the agent can start."
+            f"state.db was empty or damaged ({zsize} bytes) and has been {where}; Hermes started with a "
+            "fresh, empty session database. To bring old sessions back: in Hermes chat run `/snapshot list` "
+            "then `/snapshot restore <id>`, or run "
+            f"`hermes sessions recover --source {qpath or self.db_path} --inspect-only`."
         )
         logger.error(msg)
         _set_last_init_error(msg)

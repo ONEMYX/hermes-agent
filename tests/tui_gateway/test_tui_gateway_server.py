@@ -14951,7 +14951,11 @@ def test_prompt_submit_fails_loudly_when_store_unavailable(monkeypatch):
         server._sessions.pop("lost-sid", None)
 
     assert resp["error"]["code"] == 5072
-    assert "session storage unavailable" in resp["error"]["message"]
+    msg = resp["error"]["message"]
+    assert "not saved" in msg and "hermes doctor --fix" in msg
+    assert "utf-8 decode failure" not in msg  # raw cause rides `data.details`, never the lead
+    assert resp["error"]["data"]["code"] == "storage_unavailable"
+    assert "utf-8 decode failure" in resp["error"]["data"]["details"]
 
 
 @pytest.mark.real_agent_prewarm
@@ -15068,7 +15072,11 @@ def test_session_list_returns_clean_error_when_state_db_is_unavailable(monkeypat
     resp = server.handle_request({"id": "1", "method": "session.list", "params": {}})
 
     assert "error" in resp
-    assert "state.db unavailable: locking protocol" in resp["error"]["message"]
+    # Plain cause + repair command; the machine-readable code lets a GUI attach "Run doctor".
+    assert "Session storage is unavailable" in resp["error"]["message"]
+    assert "hermes doctor --fix" in resp["error"]["message"]
+    assert resp["error"]["data"]["code"] == "storage_unavailable"
+    assert resp["error"]["data"]["details"] == "locking protocol"
 
 
 # --------------------------------------------------------------------------
