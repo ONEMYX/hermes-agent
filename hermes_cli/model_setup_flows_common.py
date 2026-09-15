@@ -157,15 +157,19 @@ def _pick_model_or_prompt(model_list, prompt: str, **kwargs):
 
 
 def _run_login(login_fn, *args, **kwargs) -> bool:
-    """Run an OAuth login helper; print the standard failure line and return False
-    on SystemExit / any exception."""
+    """Run an OAuth login helper; print plain failure copy (what happened + retry command) and
+    return False on SystemExit / any exception. ``_login_nous`` already prints its own copy before
+    raising SystemExit, so that path stays silent here."""
+    from hermes_cli.auth_error_copy import sign_in_failure_lines
     try:
         login_fn(*args, **kwargs)
-    except SystemExit:
-        print("Login cancelled or failed.")
+    except SystemExit as exc:
+        if exc.code in (130, None, 0):
+            print("Sign-in was cancelled.")
         return False
     except Exception as exc:
-        print(f"Login failed: {exc}")
+        for line in sign_in_failure_lines(exc):
+            print(line)
         return False
     return True
 

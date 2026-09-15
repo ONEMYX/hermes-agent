@@ -589,22 +589,27 @@ class TestFormatSessionDbUnavailable:
     def test_bare_message_when_no_cause(self):
         """No init error recorded → generic message."""
         hermes_state._set_last_init_error(None)
-        assert format_session_db_unavailable() == "Session database not available."
+        msg = format_session_db_unavailable()
+        assert msg.startswith("Hermes can't open its session history right now.")
+        assert "hermes doctor" in msg
+        assert "Details:" not in msg
 
-
-    def test_adds_nfs_hint_for_locking_protocol(self):
-        """Locking-protocol cause gets an NFS/SMB pointer for the user."""
+    def test_locking_protocol_cause_is_glossed_and_kept_in_details(self):
+        """Locking-protocol (NFS/SMB) cause: plain gloss + doctor pointer up front, raw cause below."""
         hermes_state._set_last_init_error("OperationalError: locking protocol")
         msg = format_session_db_unavailable()
-        assert "locking protocol" in msg
-        assert "NFS/SMB" in msg
-        assert "sqlite.org/wal.html" in msg
+        lead, details = msg.splitlines()
+        assert "network or unsupported drive" in lead
+        assert "hermes doctor" in lead
+        assert details == "Details: OperationalError: locking protocol"
+        assert "sqlite.org" not in msg
 
     def test_custom_prefix(self):
         """Callers can customize the prefix for context-specific messages."""
         hermes_state._set_last_init_error("OperationalError: locking protocol")
         msg = format_session_db_unavailable(prefix="Cannot /resume")
-        assert msg.startswith("Cannot /resume:")
+        assert msg.startswith("Cannot /resume")
+        assert "hermes doctor" in msg
 
 
 class TestSessionDbUsesWalFallback:
