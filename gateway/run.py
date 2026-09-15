@@ -3078,12 +3078,17 @@ def _normalize_empty_agent_response(
         if _is_gateway_hidden_reasoning_incomplete_turn(agent_result):
             return ""
         if agent_result.get("partial"):
-            logger.warning(
-                "Agent turn ended partially; reply sanitized for chat. Detail: %s",
-                str(agent_result.get("error", "processing incomplete"))[:500])
+            # ``error`` mirrors the loop's own final text (curated, e.g. "Response truncated due to
+            # output length limit") and is kept; a raw provider envelope goes to the log instead.
+            err = str(agent_result.get("error") or "processing incomplete")
+            if _looks_like_gateway_provider_error(err):
+                logger.warning("Agent turn ended partially; reply sanitized for chat. Detail: %s", err[:500])
+                reason = ""
+            else:
+                reason = f": {err[:200]}"
             return (
-                "⚠️ I had to stop before finishing. Use /retry to try again, or /compress if this "
-                "conversation has grown very long.")
+                f"⚠️ I had to stop before finishing{reason}. Use /retry to try again, or /compress "
+                "if this conversation has grown very long.")
         return (
             "⚠️ Processing completed but no response was generated. "
             "This may be a transient error — try sending your message again.")

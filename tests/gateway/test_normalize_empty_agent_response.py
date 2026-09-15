@@ -115,13 +115,22 @@ class TestGenericFailureRegression:
         assert "/retry" in response and "/new" in response
         assert "hermes logs" in response
 
-    def test_partial_turn_hides_raw_detail_and_names_retry(self):
-        agent_result = {"final_response": "", "partial": True, "error": "KeyError: 'choices'", "api_calls": 2}
+    def test_partial_turn_hides_provider_envelope_and_names_retry(self):
+        raw = "API call failed after 3 retries: HTTP 500 internal server error"
+        agent_result = {"final_response": "", "partial": True, "error": raw, "api_calls": 2}
 
         response = _normalize_empty_agent_response(agent_result, "", history_len=10)
 
-        assert "KeyError" not in response
+        assert "HTTP 500" not in response
         assert "/retry" in response and "/compress" in response
+
+    def test_partial_turn_keeps_curated_loop_text(self):
+        curated = "Response truncated due to output length limit"
+        agent_result = {"final_response": "", "partial": True, "error": curated, "api_calls": 2}
+
+        response = _normalize_empty_agent_response(agent_result, "", history_len=10)
+
+        assert curated in response and "/retry" in response
 
     def test_context_failure_branch_unchanged(self):
         agent_result = {
