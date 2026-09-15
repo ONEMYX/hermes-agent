@@ -102,11 +102,10 @@ class SessionResumeTooLargeError(ValueError):
         self, message_count: int, limit: int = _MAX_SAFE_MESSAGES, scope: str = "across its lineage",
     ):
         self.message_count, self.limit = message_count, limit
-        self.scope = scope
         super().__init__(
-            f"This session is too long to reload safely ({message_count} messages; limit {limit}). "
-            "Start a fresh chat and use `hermes sessions export` to keep a copy, or raise the limit "
-            "with `hermes config set sessions.max_resume_messages 0`."
+            f"session has at least {message_count} active messages {scope}; "
+            f"safe resume limit is {limit}. Export the session instead, or set "
+            "sessions.max_resume_messages: 0 in config.yaml to disable the guard."
         )
 
 
@@ -336,33 +335,21 @@ def _strip_stale_tool_call_markers(messages: List[Dict[str, Any]]) -> List[Dict[
     return messages
 
 
-_DB_UNAVAILABLE_CAUSE_COPY: dict[str, str] = {
-    "locked": "another program is holding it",
-    "disk": "the disk is full, read-only, or not writable",
-    "corrupt": "the file is damaged",
-    "fts_index": "its search index is damaged",
-    "unknown": "it may be on a network or unsupported drive",
-}
-
-
 def format_session_db_unavailable(prefix: str = "Hermes can't open its session history right now") -> str:
-    """User-facing two-liner: what happened + `hermes doctor`, then ``Details: <raw cause>``.
+    """User-facing two-liner: plain cause + the repair command, then ``Details: <raw cause>``.
 
-    SQLite/WAL/NFS specifics stay in the Details line and the log (the WAL-incompatible markers
-    are still classified so the doctor pointer is the right next step)."""
+    The cause table lives in ``hermes_state_user_copy`` so CLI, gateway and TUI agree; SQLite/WAL
+    specifics stay in the Details line. Network filesystems (NFS/SMB/FUSE/ZFS) cannot host SQLite's
+    WAL — name that when the cause says so, as its own sentence so the lead stays jargon-free."""
     cause = get_last_init_error()
     if not cause:
         return f"{prefix}. Run `hermes doctor` to check the storage location."
-    bucket = classify_persistence_error(cause)
-    if bucket == "unknown" and not any(m in cause.lower() for m in _WAL_INCOMPAT_MARKERS):
-        bucket = ""
-    short = _DB_UNAVAILABLE_CAUSE_COPY.get(bucket, "")
-    lead = f"{prefix} ({short})" if short else prefix
-    return (
-        f"{lead}. Run `hermes doctor` to check the storage location; "
-        "sessions will not be saved until this is fixed.\n"
-        f"Details: {cause}"
-    )
+    from hermes_state_user_copy import describe_storage_failure
+    failure = describe_storage_failure(cause)
+    hint = ""
+    if any(m in cause.lower() for m in _WAL_INCOMPAT_MARKERS):
+        hint = " If the database lives on a network drive, move it to a local disk."
+    return f"{prefix}: {failure.gloss}. {failure.action}{hint}\nDetails: {cause}"
 
 
 # Auto-repair at most once per DB path per process (no repair loops; serialises concurrent
@@ -680,13 +667,12 @@ class SessionDB(
         except OSError:
             zsize = -1
         qpath = quarantine_invalid_state_db(self.db_path, already_locked=already_locked)
+        where = f"moved aside to {qpath}" if qpath else "left in place (it could not be moved aside)"
         msg = (
-            f"state.db has no SQLite header ({zsize} bytes). "
-            f"Preserved at {qpath or '(quarantine failed — file left in place)'}. "
-            f"Restore from {self.db_path.parent / 'state-snapshots'} via `hermes snapshot list` / "
-            f"`hermes snapshot restore <id>` if available, or salvage the preserved bytes with "
-            f"`hermes sessions recover --source {qpath or self.db_path}`. "
-            "Opening a fresh empty database so the agent can start."
+            f"state.db was empty or damaged ({zsize} bytes) and has been {where}; Hermes started with a "
+            "fresh, empty session database. To bring old sessions back: in Hermes chat run `/snapshot list` "
+            "then `/snapshot restore <id>`, or run "
+            f"`hermes sessions recover --source {qpath or self.db_path} --inspect-only`."
         )
         logger.error(msg)
         _set_last_init_error(msg)

@@ -2446,9 +2446,12 @@ export const en: Translations = {
       running: 'running',
       paused: 'paused',
       disabled: 'disabled',
-      error: 'error',
+      error: 'last run failed',
       completed: 'completed'
     },
+    lastRunFailed: 'Last run failed:',
+    editJob: 'Edit job',
+    runAgain: 'Run again',
     deliveryLabels: {
       local: 'This desktop',
       telegram: 'Telegram',

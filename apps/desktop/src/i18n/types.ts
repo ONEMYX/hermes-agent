@@ -2117,6 +2117,9 @@ export interface Translations {
     search: string
     loading: string
     states: Record<string, string>
+    lastRunFailed: string
+    editJob: string
+    runAgain: string
     deliveryLabels: Record<string, string>
     scheduleLabels: Record<string, string>
     scheduleHints: Record<string, string>
