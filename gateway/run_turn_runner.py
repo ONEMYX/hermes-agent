@@ -176,7 +176,7 @@ class TurnRunner:
             if status in SUBAGENT_FAILURE_STATUSES and ctx._run_still_current():
                 line = format_subagent_failure_line(
                     kwargs.get("goal"), status, error=kwargs.get("summary") or preview,
-                    duration_seconds=kwargs.get("duration_seconds"),
+                    duration_seconds=kwargs.get("duration_seconds"), failure_reason=kwargs.get("failure_reason"),
                 )
                 self._schedule(self._runner._deliver_platform_notice(ctx.source, line), "subagent failure notice scheduling error")
         except Exception:
