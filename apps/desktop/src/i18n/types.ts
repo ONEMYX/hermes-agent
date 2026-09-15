@@ -5,9 +5,17 @@
 // partial locales should use `defineLocale()` so missing desktop-only strings
 // fall back to English while new keys remain type-checked.
 
+import type { ErrorCodeKey } from '@/lib/error-surface'
 import type { TipId } from '@/lib/tips/catalog'
 
 export type Locale = 'en' | 'zh' | 'zh-hant' | 'ja' | 'ar' | 'ru'
+
+/** One error-card entry: a short title and one plain sentence. Either may
+ *  take the failing provider's display name (falls back to "the AI service"). */
+export interface ErrorCardCopy {
+  title: string | ((provider: string) => string)
+  body: string | ((provider: string) => string)
+}
 
 export type ToolTitleKey =
   | 'browser_click'
@@ -3393,10 +3401,42 @@ export interface Translations {
         runtime: string
         streaming: string
       }
+      /** One plain sentence per layer — what happened and what to do — shown
+       *  when the failure code has no dedicated entry in `errorCodes`. */
+      errorLayerBodies: {
+        auth: string
+        billing: string
+        disk: string
+        endpoint: string
+        gateway: string
+        generic: string
+        provider: string
+        runtime: string
+        streaming: string
+      }
+      /** Per failure code (agent/error_classifier.py FailoverReason values plus
+       *  the gateway's site codes): a title and one plain sentence saying what
+       *  happened and what to do. Function entries take the provider label. */
+      errorCodes: Record<ErrorCodeKey, ErrorCardCopy>
+      /** Auth layer, keyed on how the provider is credentialed. The OAuth
+       *  body is `errorOauthExpired` (already translated per locale). */
+      errorAuthKinds: { api_key: ErrorCardCopy; oauth: Pick<ErrorCardCopy, 'title'> }
+      /** Collapsed "Details" line holding the raw provider/gateway text. */
+      errorDetails: string
+      /** Stands in for the provider name when the descriptor carries none. */
+      errorGenericProvider: string
+      /** Global toast title for a mid-turn gateway `error` event. */
+      errorToastTitle: string
       errorRetry: string
       /** Escape hatch when Retry would only reproduce SESSION_NOT_OWNED (#106217). */
       errorStartNewSession: string
       errorSwitchProvider: string
+      errorChooseModel: string
+      errorCompressConversation: string
+      errorCompressFailed: string
+      errorOpenHermesFolder: string
+      errorOpenHermesFolderFailed: string
+      errorUpdateApiKey: string
       /** One-click recovery for an expired/revoked OAuth grant: re-runs that
        *  provider's sign-in flow (auth layer, authKind 'oauth'). */
       errorSignInAgain: (provider: string) => string

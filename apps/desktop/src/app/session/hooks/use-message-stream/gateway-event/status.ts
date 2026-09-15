@@ -1,6 +1,10 @@
-import { translateNow } from '@/i18n'
+import { isSessionNotOwnedError } from '@/app/session/hooks/use-prompt-actions/utils'
+import { translateNow, TRANSLATIONS } from '@/i18n'
+import { getRuntimeI18nLocale } from '@/i18n/runtime'
 import { textPart } from '@/lib/chat-messages'
 import { coerceGatewayText } from '@/lib/chat-runtime'
+import type { ErrorSurface } from '@/lib/error-surface'
+import { errorCardText } from '@/lib/error-surface-copy'
 import { isProviderSetupErrorMessage } from '@/lib/provider-setup-errors'
 import { type AgentNoticePayload, clearAgentNotice, nativeNoticeInput, showAgentNotice } from '@/store/agent-notices'
 import { clearClarifyRequest } from '@/store/clarify'
@@ -170,6 +174,20 @@ export function handleStatusEvent(ctx: GatewayEventContext): boolean {
     const errorMessage = payload?.message || 'Hermes reported an error'
     const looksLikeProviderSetup = isProviderSetupErrorMessage(errorMessage)
 
+    // The gateway's `error` event carries no error_surface (prompt_turn.py
+    // emits it for pre-turn refusals). Recover the two codes it CAN mean from
+    // the text so the card and toast get the same plain copy + button gating
+    // as a classified turn: a live-owner refusal (SESSION_NOT_OWNED, #106217)
+    // is deterministic — Retry hits the same wall, only a new chat helps —
+    // and disk-full is a machine problem, not a provider one.
+    const surface: ErrorSurface | null = isSessionNotOwnedError(new Error(errorMessage))
+      ? { code: 'SESSION_NOT_OWNED', layer: 'gateway', retryable: false }
+      : isDiskFullErrorMessage(errorMessage)
+        ? { code: 'disk_full', layer: 'disk', retryable: false }
+        : null
+
+    const card = errorCardText(TRANSLATIONS[getRuntimeI18nLocale()].assistant.thread, surface)
+
     // A turn that errors out has also ended — drop any open blocking prompt
     // for this session so an approval/sudo/secret overlay can't linger past
     // the failed turn (same intent as the message.complete clear).
@@ -187,7 +205,7 @@ export function handleStatusEvent(ctx: GatewayEventContext): boolean {
     }
 
     dispatchNativeNotification({
-      body: errorMessage,
+      body: `${card.title}. ${card.body}`,
       kind: 'turnError',
       sessionId,
       title: translateNow('notifications.native.turnErrorTitle')
@@ -195,24 +213,28 @@ export function handleStatusEvent(ctx: GatewayEventContext): boolean {
 
     if (looksLikeProviderSetup) {
       requestDesktopOnboarding(errorMessage)
-    } else if (isDiskFullErrorMessage(errorMessage)) {
+    } else if (surface?.code === 'disk_full') {
       notifyError(new Error(errorMessage), translateNow('notifications.errors.diskFull'))
     } else {
       // Toast globally, not just when the failing thread is focused: a
       // turn-ending error (e.g. out of funds) blocks every thread, so the
       // inline error alone is too easy to miss. The stable id collapses the
-      // same error from multiple blocked threads into one toast.
+      // same error from multiple blocked threads into one toast. Same glossed
+      // sentence as the card; the raw gateway text rides as the dimmed detail.
+      // No Retry action: assistant-ui's reload is per-thread, and for the
+      // codes recovered above a retry would fail identically anyway.
       notify({
+        detail: errorMessage,
         id: `gateway-error:${errorMessage}`,
         kind: 'error',
-        title: 'Hermes error',
-        message: errorMessage
+        message: `${card.title}. ${card.body}`,
+        title: translateNow('assistant.thread.errorToastTitle')
       })
     }
 
     if (sessionId) {
       flushQueuedDeltas(sessionId)
-      failAssistantMessage(sessionId, errorMessage, occurredAt)
+      failAssistantMessage(sessionId, errorMessage, occurredAt, surface)
     }
 
     if (isActiveEvent) {
