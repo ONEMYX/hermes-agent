@@ -10,8 +10,10 @@ import {
   isVersionSkewError,
   lastStderrLine,
   promptTimeoutNotice,
+  setRpcErrorLogSink,
   shouldFallbackToDispatch,
-  stderrLooksLikeProblem
+  stderrLooksLikeProblem,
+  stderrProblemActivity
 } from '../app/userMessages.js'
 
 // Behaviour contracts for the user-facing wording, not snapshots: each test
@@ -43,6 +45,7 @@ describe('describeTurnFailure', () => {
       error: 'peer closed connection',
       error_surface: { code: 'weird', layer: 'streaming', retryable: true }
     })
+
     expect(streaming).toMatch(/dropped mid-reply/)
     expect(streaming).toContain('/retry')
 
@@ -59,6 +62,25 @@ describe('describeTurnFailure', () => {
     })
 
     expect(text).toContain('/model')
+  })
+
+  it('honours error_surface.retryable=false even though the backend always sets recoverable=true', () => {
+    const notRetryable = describeTurnFailure({
+      error: 'x',
+      error_surface: { code: 'weird', layer: 'provider', retryable: false },
+      recoverable: true
+    })
+
+    expect(notRetryable).not.toContain('/retry')
+    expect(notRetryable).toContain('/model')
+
+    const retryable = describeTurnFailure({
+      error: 'x',
+      error_surface: { code: 'weird', layer: 'provider', retryable: true },
+      recoverable: true
+    })
+
+    expect(retryable).toContain('/retry')
   })
 })
 
@@ -93,6 +115,34 @@ describe('describeRpcError', () => {
   it('passes ordinary domain errors through unchanged', () => {
     expect(describeRpcError(new JsonRpcGatewayError('hash required', { code: 4014 }))).toBe('hash required')
   })
+
+  it('does not treat every 4001 as a stale session: the backend reuses the code for other refusals', () => {
+    for (const raw of ['no active session to retry', 'slug and api_key are required', 'session ownership changed']) {
+      expect(describeRpcError(new JsonRpcGatewayError(raw, { code: 4001 }))).toBe(raw)
+    }
+
+    expect(describeRpcError(new JsonRpcGatewayError('session not found or not owned by this transport', { code: 4001 }))).toContain(
+      '/resume'
+    )
+  })
+
+  it('records the raw wire text it replaced in the log sink', () => {
+    const lines: string[] = []
+    setRpcErrorLogSink(line => lines.push(line))
+
+    try {
+      describeRpcError(new JsonRpcGatewayError('session not found', { code: 4001 }))
+      describeRpcError(new Error('gateway not connected: prompt.submit'))
+      describeRpcError(new JsonRpcGatewayError('hash required', { code: 4014 }))
+    } finally {
+      setRpcErrorLogSink(null)
+    }
+
+    expect(lines).toHaveLength(2)
+    expect(lines[0]).toContain('4001')
+    expect(lines[0]).toContain('session not found')
+    expect(lines[1]).toContain('prompt.submit')
+  })
 })
 
 describe('isVersionSkewError', () => {
@@ -101,6 +151,7 @@ describe('isVersionSkewError', () => {
       'invalid params for prompt.submit: turn_author: Extra inputs are not permitted',
       { code: 4000 }
     )
+
     const unknown = new JsonRpcGatewayError('unknown method: session.control.read', { code: -32601 })
 
     expect(isVersionSkewError(extra)).toBe(true)
@@ -112,13 +163,34 @@ describe('isVersionSkewError', () => {
 })
 
 describe('slash.exec fallback policy', () => {
-  it('falls back to command.dispatch only for 4011/4018 refusals', () => {
-    expect(shouldFallbackToDispatch(new JsonRpcGatewayError('unknown command: zzz', { code: 4011 }))).toBe(true)
+  it('falls back to command.dispatch only for the two "slash.exec does not own this" 4018 refusals', () => {
     expect(
       shouldFallbackToDispatch(new JsonRpcGatewayError('skill command: use command.dispatch for /x', { code: 4018 }))
     ).toBe(true)
+    expect(
+      shouldFallbackToDispatch(
+        new JsonRpcGatewayError(
+          'snapshot restore mutates live config/state; use command.dispatch for /snapshot restore',
+          { code: 4018 }
+        )
+      )
+    ).toBe(true)
     expect(shouldFallbackToDispatch(new JsonRpcGatewayError('slash worker timed out', { code: 5030 }))).toBe(false)
     expect(shouldFallbackToDispatch(new JsonRpcGatewayError('session not found', { code: 4001 }))).toBe(false)
+  })
+
+  it('does not re-dispatch a 4018 that command.dispatch itself already returned (would re-run /retry, /undo, bundles)', () => {
+    for (const raw of [
+      'retry cannot safely reconstruct or combine attached media',
+      'bundle dispatch failed: boom',
+      'not a quick/plugin/bundle/skill command: zzz',
+      'quick command failed with exit code 1'
+    ]) {
+      expect(shouldFallbackToDispatch(new JsonRpcGatewayError(raw, { code: 4018 }))).toBe(false)
+    }
+
+    // slash.exec never emits 4011; a code the TUI does not know is not a fallback ticket either.
+    expect(shouldFallbackToDispatch(new JsonRpcGatewayError('unknown command: zzz', { code: 4011 }))).toBe(false)
   })
 
   it('names the command and the helper failure instead of the fallback refusal', () => {
@@ -133,6 +205,7 @@ describe('slash.exec fallback policy', () => {
       'journey',
       new JsonRpcGatewayError('slash worker closed pipe: ValueError: bad', { code: 5030 })
     )
+
     expect(crash).toMatch(/^\/journey did not finish/)
     expect(crash).toContain('Details: ValueError: bad')
   })
@@ -142,6 +215,7 @@ describe('backend lifecycle copy', () => {
   it('names the exit code, the last real stderr line, /logs and hermes doctor', () => {
     const tail =
       '[lifecycle] child exit code=1\nModuleNotFoundError: No module named pydantic\n[lifecycle] scheduling gateway reconnect in 1000ms (attempt 1)'
+
     const text = backendGaveUp(1, lastStderrLine(tail))
 
     expect(text).toContain('exit code 1')
@@ -149,6 +223,7 @@ describe('backend lifecycle copy', () => {
     expect(text).not.toContain('[lifecycle]')
     expect(text).toContain('/logs')
     expect(text).toContain('hermes doctor')
+    expect(text).toContain('/resume')
     expect(text).not.toMatch(/\bgateway\b/)
   })
 
@@ -156,7 +231,18 @@ describe('backend lifecycle copy', () => {
     expect(stderrLooksLikeProblem('  File "/x/run_agent.py", line 812, in _call_model')).toBe(false)
     expect(stderrLooksLikeProblem('Traceback (most recent call last):')).toBe(true)
     expect(stderrLooksLikeProblem('[gateway-turn] ValueError: nope')).toBe(true)
+    expect(stderrLooksLikeProblem('ValueError: nope')).toBe(true)
     expect(stderrLooksLikeProblem('INFO hermes.mcp: discovered 3 servers')).toBe(false)
+  })
+
+  it('ignores dependency warning lines and does not call the failure a "backend" problem', () => {
+    expect(stderrLooksLikeProblem('/x/site-packages/foo.py:12: DeprecationWarning: use bar instead')).toBe(false)
+    expect(stderrLooksLikeProblem('UserWarning: something is odd')).toBe(false)
+
+    const row = stderrProblemActivity('ValueError: nope')
+    expect(row).toContain('(ValueError)')
+    expect(row).toContain('/logs')
+    expect(row).not.toMatch(/\bbackend\b/)
   })
 })
 
@@ -166,6 +252,9 @@ describe('promptTimeoutNotice', () => {
 
     expect(sudo).toMatch(/Password prompt closed/)
     expect(sudo).toMatch(/skipped/)
+    // The timeout lengths live in Python (agent_callbacks.py); the copy must not hard-code them.
+    expect(sudo).not.toMatch(/\d+ minutes?/)
+    expect(promptTimeoutNotice('vault.code', 'timeout')).not.toMatch(/\d+ minutes?/)
     expect(promptTimeoutNotice('vault.code', 'timeout')).toMatch(/code/)
     expect(promptTimeoutNotice('sudo', 'interrupted')).toBeNull()
     expect(promptTimeoutNotice('approval', 'timeout')).toBeNull()

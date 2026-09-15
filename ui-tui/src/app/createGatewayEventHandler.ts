@@ -1499,9 +1499,13 @@ export function createGatewayEventHandler(ctx: GatewayEventHandlerContext): (ev:
           // instead; a partial reply keeps its streamed text.
           const failed = payload.status === 'error' && !payload.partial && isBareErrorText(finalText, payload.error)
 
+          // Only the trailing bare-error slot is replaced; interim segments the
+          // model streamed before the failure stay in the transcript.
           const msgs: Msg[] = failed
             ? [
-                ...finalMessages.filter(m => m.role !== 'assistant'),
+                ...finalMessages.filter(
+                  (m, i) => !(i === finalMessages.length - 1 && m.role === 'assistant' && isBareErrorText(m.text, payload.error))
+                ),
                 { role: 'assistant', text: describeTurnFailure(payload) }
               ]
             : finalMessages.length

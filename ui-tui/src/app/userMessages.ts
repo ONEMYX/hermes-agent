@@ -9,7 +9,6 @@ import type { ErrorSurface } from '@hermes/shared/gateway-events'
 /** JSON-RPC error codes the gateway answers with. */
 export const RPC_INVALID_PARAMS = 4000
 export const RPC_SESSION_NOT_FOUND = 4001
-export const RPC_UNKNOWN_COMMAND = 4011
 export const RPC_NOT_DISPATCHABLE = 4018
 export const RPC_UNKNOWN_METHOD = -32601
 
@@ -47,6 +46,7 @@ export const backendGaveUp = (code: null | number, lastLine?: string): string =>
   return [
     `Hermes stopped${exit} and could not be restarted. Your chat is saved.`,
     detail,
+    'Hermes keeps trying to reconnect in the background and reopens this chat when it succeeds; if it does not, type /resume.',
     'Type /logs for the full log, or /quit and run `hermes doctor` to check the install.'
   ]
     .filter(Boolean)
@@ -77,16 +77,19 @@ export const BACKEND_SLOW_START_STATUS = 'still starting…'
 
 // ── stderr noise ──────────────────────────────────────────────────────────
 
-const STDERR_PROBLEM_RE = /Traceback|(?:Error|Exception|Warning)\b|CRITICAL|\[gateway-turn\]|\[gateway-exit\]/
+// Only real failures: a traceback, a CRITICAL log line, an `XxxError:` / `XxxException:`
+// head, or the gateway's own turn/exit markers. Dependency `DeprecationWarning` /
+// `UserWarning` lines are noise and stay in /logs only.
+const STDERR_PROBLEM_RE = /Traceback|\b[A-Z][A-Za-z]*(?:Error|Exception)\b:|CRITICAL|\[gateway-turn\]|\[gateway-exit\]/
 
 /** Only lines that look like a failure earn an activity row; the rest stay in /logs. */
 export const stderrLooksLikeProblem = (line: string): boolean => STDERR_PROBLEM_RE.test(line)
 
 export const stderrProblemActivity = (line: string): string => {
-  const m = /([A-Z][A-Za-z]+(?:Error|Exception|Warning)):/.exec(line)
+  const m = /([A-Z][A-Za-z]*(?:Error|Exception)):/.exec(line)
   const what = m ? ` (${m[1]})` : ''
 
-  return `Hermes backend reported a problem${what} · /logs for details`
+  return `Something went wrong inside Hermes${what} · /logs for details`
 }
 
 // ── RPC errors ────────────────────────────────────────────────────────────
@@ -107,8 +110,42 @@ export const isVersionSkewError = (err: unknown): boolean => {
 export const VERSION_SKEW_MESSAGE =
   'The terminal UI and the Hermes backend are out of sync (different versions). Run /update, or exit and run `hermes update`, then start the TUI again.'
 
+const SESSION_NOT_FOUND_RE = /session not found/i
 const NOT_CONNECTED_RE = /^gateway not (?:connected|running)\b/
 const TIMED_OUT_RE = /^request timed out after (\d+)s/
+
+type RpcErrorRow = [matcher: (code: number | undefined, text: string) => RegExpExecArray | boolean | null, render: (m: RegExpExecArray | null) => string]
+
+// Ordered: first matching row wins. 4001 is reused by the backend for unrelated
+// refusals ("no active session", "slug is required", NOT_OWNER), so the code
+// alone must not trigger the /resume copy — only the "session not found" text.
+const RPC_ERROR_ROWS: RpcErrorRow[] = [
+  [
+    (code, text) => (code === RPC_SESSION_NOT_FOUND || code === undefined) && SESSION_NOT_FOUND_RE.test(text),
+    () =>
+      'This chat is no longer attached to the backend (it was idle or the backend restarted). Your history is saved: type /resume to reopen it.'
+  ],
+  [
+    (_code, text) => NOT_CONNECTED_RE.test(text),
+    () =>
+      'Hermes is not connected right now, so that was not sent. It reconnects automatically; wait a moment and try again, or type /logs if this persists.'
+  ],
+  [
+    (_code, text) => TIMED_OUT_RE.exec(text),
+    m => `Hermes did not answer within ${m?.[1] ?? '?'}s. Try again; if it keeps happening, type /logs and report the last lines.`
+  ]
+]
+
+let rpcErrorLogSink: ((line: string) => void) | null = null
+
+/** Where describeRpcError records the raw wire text it replaced (the /logs buffer). */
+export const setRpcErrorLogSink = (sink: ((line: string) => void) | null): void => {
+  rpcErrorLogSink = sink
+}
+
+const logReplacedWireText = (code: number | undefined, text: string): void => {
+  rpcErrorLogSink?.(`[rpc] ${code === undefined ? '' : `code=${code} `}${text}`)
+}
 
 /** Rewrite transport/session errors into plain words; other errors pass through. */
 export const describeRpcError = (err: unknown): string => {
@@ -116,21 +153,19 @@ export const describeRpcError = (err: unknown): string => {
   const text = message ?? (typeof err === 'string' && err.trim() ? err : 'request failed')
 
   if (isVersionSkewError(err)) {
+    logReplacedWireText(code, text)
+
     return VERSION_SKEW_MESSAGE
   }
 
-  if (code === RPC_SESSION_NOT_FOUND || /^session not found$/.test(text)) {
-    return 'This chat is no longer attached to the backend (it was idle or the backend restarted). Your history is saved: type /resume to reopen it.'
-  }
+  for (const [matcher, render] of RPC_ERROR_ROWS) {
+    const m = matcher(code, text)
 
-  if (NOT_CONNECTED_RE.test(text)) {
-    return 'Hermes is not connected right now, so that was not sent. It reconnects automatically; wait a moment and try again, or type /logs if this persists.'
-  }
+    if (m) {
+      logReplacedWireText(code, text)
 
-  const timeout = TIMED_OUT_RE.exec(text)
-
-  if (timeout) {
-    return `Hermes did not answer within ${timeout[1]}s. Try again; if it keeps happening, type /logs and report the last lines.`
+      return render(m === true ? null : m)
+    }
   }
 
   return text
@@ -156,12 +191,18 @@ export const describeSlashExecError = (command: string, err: unknown): string =>
   return describeRpcError(err)
 }
 
+// slash.exec answers 4018 with exactly these texts when it does NOT own the
+// command (tui_gateway/methods_tools.py). Every other 4018 came from a
+// command.dispatch handler slash.exec already forwarded to (/retry, /undo,
+// /compress, /queue, bundles): re-dispatching would run a mutating command twice.
+const NOT_MINE_REFUSAL_RE = /^skill command: use command\.dispatch for \/|use command\.dispatch for \/snapshot restore/
+
 /** command.dispatch is only a fallback for "slash.exec does not own this command" refusals. */
 export const shouldFallbackToDispatch = (err: unknown): boolean => {
   const { code, message } = rpcShape(err)
 
-  if (code === RPC_UNKNOWN_COMMAND || code === RPC_NOT_DISPATCHABLE) {
-    return true
+  if (code === RPC_NOT_DISPATCHABLE) {
+    return NOT_MINE_REFUSAL_RE.test(message ?? '')
   }
 
   if (code !== undefined) {
@@ -222,7 +263,10 @@ export const describeTurnFailure = (payload: TurnFailure): string => {
   const layer = typeof surface.layer === 'string' ? surface.layer : ''
   const provider = typeof surface.provider === 'string' && surface.provider ? ` (${surface.provider})` : ''
   const [title, hint] = TURN_CODE_COPY[code] ?? TURN_LAYER_COPY[layer] ?? TURN_DEFAULT_COPY
-  const nextStep = payload.recoverable === false ? hint.replace('Send /retry', 'Pick another model with /model') : hint
+  // The backend always sets recoverable=true on a turn error; error_surface.retryable
+  // is the signal that actually says whether /retry can help.
+  const retryable = (surface as { retryable?: unknown }).retryable !== false && payload.recoverable !== false
+  const nextStep = retryable ? hint : hint.replace(/(?:Send|Try) \/retry/, 'Pick another model with /model')
   const raw = (payload.error ?? '').replace(/^Error:\s*/, '')
 
   return [`${title}${provider}. Your message was not answered.`, detailLine(raw), nextStep].filter(Boolean).join('\n')
@@ -240,13 +284,13 @@ export const isBareErrorText = (text: string, error: null | string | undefined):
 const PROMPT_TIMEOUT_COPY: Record<string, string> = {
   secret:
     'Secret prompt closed: no answer in time, so the step that needed it was skipped. Send your request again when you are ready to enter it.',
-  sudo: 'Password prompt closed: no answer within 2 minutes, so the command was skipped. Send your request again when you are ready to enter it.',
+  sudo: 'Password prompt closed: no answer in time, so the command was skipped. Send your request again when you are ready to enter it.',
   'vault.code':
-    'Verification-code prompt closed: no answer within 3 minutes, so the sign-in was skipped. Send your request again when you have the code.',
+    'Verification-code prompt closed: no answer in time, so the sign-in was skipped. Send your request again when you have the code.',
   'vault.save_login':
-    'Save-login prompt closed: no answer within 3 minutes, so nothing was saved. Send your request again when you are ready.',
+    'Save-login prompt closed: no answer in time, so nothing was saved. Send your request again when you are ready.',
   'vault.unlock_prompt':
-    'Unlock prompt closed: no answer within 2 minutes, so the password manager stayed locked. Send your request again when you are ready to unlock it.'
+    'Unlock prompt closed: no answer in time, so the password manager stayed locked. Send your request again when you are ready to unlock it.'
 }
 
 export const promptTimeoutNotice = (method: string | undefined, reason: string | undefined): null | string =>

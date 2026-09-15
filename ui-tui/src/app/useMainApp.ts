@@ -991,8 +991,10 @@ export function useMainApp(gw: GatewayClient) {
 
       // Budget spent (crash loop) or nothing to recover: GatewayClient keeps
       // retrying on its backoff — say so ONCE, with the exit code and the last
-      // stderr line, rather than repeating "gateway exited" every tick.
-      recoverSidRef.current = null
+      // stderr line, rather than repeating "gateway exited" every tick. Keep the
+      // recovery target: when that background reconnect eventually succeeds,
+      // gateway.ready must reopen the SAME chat instead of forging a new one.
+      recoverSidRef.current = plan.sid
       patchUiState({ status: 'stopped' })
 
       if (!gaveUpRef.current) {

@@ -1699,6 +1699,29 @@ describe('createGatewayEventHandler', () => {
     expect(assistant[0]!.text).toContain('/retry')
   })
 
+  it('keeps interim assistant segments on a failed turn and replaces only the bare error slot', () => {
+    const appended: Msg[] = []
+    const onEvent = createGatewayEventHandler(buildCtx(appended))
+
+    onEvent({ payload: { text: 'Let me look that up first.' }, type: 'message.interim' } as any)
+    onEvent({
+      payload: {
+        error: 'boom',
+        error_surface: { code: 'server_error', layer: 'provider', retryable: true },
+        recoverable: true,
+        status: 'error',
+        text: 'Error: boom'
+      },
+      type: 'message.complete'
+    } as any)
+
+    const assistant = appended.filter(m => m.role === 'assistant')
+    expect(assistant.some(m => m.text === 'Let me look that up first.')).toBe(true)
+    expect(assistant.some(m => /^Error: boom/.test(m.text))).toBe(false)
+    expect(assistant.at(-1)!.text).toMatch(/internal error/)
+    expect(assistant.at(-1)!.text).toContain('/retry')
+  })
+
   it('keeps streamed partial text on a failed turn (only the empty-reply case is rewritten)', () => {
     const appended: Msg[] = []
     const onEvent = createGatewayEventHandler(buildCtx(appended))
