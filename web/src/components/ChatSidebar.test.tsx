@@ -37,6 +37,7 @@ const reloadMocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/api', () => ({
+  HERMES_BASE_PATH: '',
   api: { getModelInfo: apiMocks.getModelInfo },
   buildWsUrl: apiMocks.buildWsUrl
 }))
@@ -384,16 +385,16 @@ describe('ChatSidebar event socket reconnect', () => {
     await act(async () => {
       FakeWebSocket.instances[0].emit('close', { code: 1006 })
     })
-    expect(container.textContent).toContain('events feed disconnected')
+    expect(container.textContent).toContain('Live tool activity paused')
 
     await advance(1_000)
     await act(async () => {
       FakeWebSocket.instances[1].emit('open', {})
     })
 
-    // Banner gone entirely — including the "reconnect events feed" button,
+    // Banner gone entirely — including the "Reconnect side panel" button,
     // which only renders while `error` is set.
-    expect(container.textContent).not.toContain('events feed')
+    expect(container.textContent).not.toContain('Live tool activity')
   })
 
   it('does not clear a credential warning when the feed recovers', async () => {
@@ -441,9 +442,37 @@ describe('ChatSidebar event socket reconnect', () => {
 
     expect(container.textContent).toContain('ANTHROPIC_API_KEY is not set')
     // The disconnect message must not have replaced it. (Matching the
-    // banner text specifically — "reconnect events feed" is the button
-    // label, which is expected to be present whenever a banner shows.)
-    expect(container.textContent).not.toContain('events feed disconnected')
+    // banner text specifically — the reconnect button label is expected to
+    // be present whenever a banner shows.)
+    expect(container.textContent).not.toContain('Live tool activity paused')
+  })
+
+  it('offers Add key and Switch model when the gateway reports a missing key', async () => {
+    await renderSidebar()
+
+    await act(async () => {
+      gatewayMocks.handlers.get('session.info')?.({
+        payload: {
+          credential_warning: "No API key configured for provider 'openrouter'. First message will fail."
+        }
+      })
+    })
+
+    expect(container.textContent).toContain('No API key set for openrouter')
+    expect(container.textContent).not.toContain('First message will fail')
+    const labels = Array.from(container.querySelectorAll('button')).map(b => b.textContent?.trim())
+    expect(labels).toContain('Add key')
+    expect(labels).toContain('Switch model')
+  })
+
+  it('explains that only the side panel is affected when the sidecar cannot connect', async () => {
+    gatewayMocks.connect.mockRejectedValueOnce(new Error('WebSocket connection failed'))
+    await renderSidebar()
+
+    await vi.waitFor(() => expect(container.textContent).toContain('Chat still works'))
+    expect(container.textContent).not.toContain('WebSocket')
+    const labels = Array.from(container.querySelectorAll('button')).map(b => b.textContent?.trim())
+    expect(labels).toContain('Reconnect side panel')
   })
 
   it('still reconnects while a foreign banner suppresses its message', async () => {
@@ -476,7 +505,7 @@ describe('ChatSidebar event socket reconnect', () => {
       FakeWebSocket.instances[0].emit('close', { code: 1006 })
     })
     const reconnectButton = Array.from(container.querySelectorAll('button')).find(b =>
-      /reconnect events feed/i.test(b.textContent ?? '')
+      /reconnect side panel/i.test(b.textContent ?? '')
     )
     expect(reconnectButton).toBeDefined()
     await act(async () => {

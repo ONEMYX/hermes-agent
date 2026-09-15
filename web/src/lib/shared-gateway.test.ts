@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { ApiError } from "./api-error";
 import {
   servedProfileRefusal,
   sharedGatewayProfiles,
@@ -26,5 +27,14 @@ describe("servedProfileRefusal", () => {
     );
     expect(servedProfileRefusal(err)).toMatch(/^The default gateway already serves profile 'alpha'/);
     expect(servedProfileRefusal(new Error("500: boom"))).toBeNull();
+    const apiErr = new ApiError("The default gateway already serves profile 'beta'", {
+      status: 409,
+      body: "",
+      url: "/api/gateway/start",
+    });
+    expect(servedProfileRefusal(apiErr)).toMatch(/^The default gateway already serves profile 'beta'/);
+    expect(
+      servedProfileRefusal(new ApiError("boom", { status: 500, body: "", url: "/x" })),
+    ).toBeNull();
   });
 });

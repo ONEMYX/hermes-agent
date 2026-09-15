@@ -34,7 +34,7 @@ import { ModelReloadConfirm } from '@/components/ModelReloadConfirm'
 import { ReasoningPicker } from '@/components/ReasoningPicker'
 import { GatewayClient, type ConnectionState } from '@/lib/gatewayClient'
 import { EventsFeedClient } from '@/lib/eventsFeedClient'
-import { api } from '@/lib/api'
+import { api, HERMES_BASE_PATH } from '@/lib/api'
 import {
   EVENTS_MAX_RECONNECT_ATTEMPTS,
   eventsGaveUpMessage,
@@ -42,13 +42,15 @@ import {
   eventsReconnectingMessage,
   eventsRejectedMessage,
   isEventsAuthRejection,
+  isEventsAuthRejectionMessage,
   isEventsFeedMessage,
   shouldRetryEventsClose
 } from '@/lib/events-reconnect'
+import { credentialWarning, sidecarErrorMessage } from '@/lib/chat-sidebar-banner'
 import { titleFromSessionInfoPayload } from '@/lib/chat-title'
 
 import { cn } from '@/lib/utils'
-import { AlertCircle, ChevronDown, RefreshCw } from 'lucide-react'
+import { AlertCircle, ChevronDown, KeyRound, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 interface SessionInfo {
@@ -196,7 +198,8 @@ export function ChatSidebar({
       const message = ev.payload?.message
 
       if (message) {
-        setError(message)
+        console.warn(`[chat-sidebar] sidecar error: ${message}`)
+        setError(sidecarErrorMessage(message))
       }
     })
 
@@ -215,7 +218,8 @@ export function ChatSidebar({
       })
       .catch((e: Error) => {
         if (!cancelled) {
-          setError(e.message)
+          console.warn(`[chat-sidebar] sidecar connect failed: ${e.message}`)
+          setError(sidecarErrorMessage(e.message))
         }
       })
 
@@ -302,6 +306,7 @@ export function ChatSidebar({
       if (unmounting) {
         return
       }
+      console.warn(`[chat-sidebar] events feed closed code=${code ?? 'none'}`)
       if (code !== undefined && isEventsAuthRejection(code)) {
         surface(eventsRejectedMessage(code))
         return
@@ -362,7 +367,9 @@ export function ChatSidebar({
   // sidecar gateway session, so it's available whenever the sidebar is mounted.
   const modelName = effectiveModel || info.model || '—'
   const modelLabel = modelName.split('/').slice(-1)[0] ?? '—'
-  const banner = error ?? info.credential_warning ?? null
+  const credential = credentialWarning(info.credential_warning)
+  const banner = error ?? credential?.message ?? null
+  const showReload = isEventsAuthRejectionMessage(error)
 
   return (
     <aside
@@ -429,10 +436,38 @@ export function ChatSidebar({
           <div className="min-w-0 flex-1">
             <div className="wrap-break-word text-destructive">{banner}</div>
 
-            {error && (
-              <Button size="sm" outlined className="mt-1" onClick={reconnect} prefix={<RefreshCw />}>
-                reconnect events feed
+            {error && showReload && (
+              <Button
+                size="sm"
+                outlined
+                className="mt-1"
+                onClick={() => window.location.reload()}
+                prefix={<RefreshCw />}
+              >
+                Reload page
               </Button>
+            )}
+            {error && !showReload && (
+              <Button size="sm" outlined className="mt-1" onClick={reconnect} prefix={<RefreshCw />}>
+                Reconnect side panel
+              </Button>
+            )}
+            {!error && credential && (
+              <div className="mt-1 flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  outlined
+                  prefix={<KeyRound />}
+                  // Full navigation rather than a router Link: the sidebar is
+                  // also mounted in the mobile portal outside the route tree.
+                  onClick={() => window.location.assign(`${HERMES_BASE_PATH}/env`)}
+                >
+                  Add key
+                </Button>
+                <Button size="sm" outlined onClick={() => setModelOpen(true)}>
+                  Switch model
+                </Button>
+              </div>
             )}
           </div>
         </Card>

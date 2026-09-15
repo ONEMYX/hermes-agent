@@ -74,6 +74,21 @@ export function cronJobHasExecutionContent(
   return Boolean(asString(job.prompt).trim() || asString(job.script).trim() || skills.length);
 }
 
+/** Shown when the script-only mode is on but the Script field is empty. `no_agent` is the
+ *  config key, not a term the user has seen; name the field they must fill instead. */
+export const CRON_SCRIPT_REQUIRED_MESSAGE =
+  "Script-only jobs need a script path. Fill in the Script field or switch the job back to prompt mode.";
+
+/** Focus a cron editor input by id (the editor renders `${idPrefix}-script`, etc.). */
+export function focusCronField(id: string): void {
+  if (typeof document === "undefined") return;
+  const el = document.getElementById(id);
+  if (el instanceof HTMLElement) {
+    el.focus();
+    el.scrollIntoView?.({ block: "center" });
+  }
+}
+
 export function cronJobFormFromJob(job: CronJob): CronJobFormState {
   const storedRefs = splitCronList(job.context_from);
   // Raw store records carry the reserved "self" entry inside context_from;
