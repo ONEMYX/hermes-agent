@@ -24,8 +24,11 @@ def register_timeout_notice(
     """Arm a settle hook that posts the timed-out notice for ``approval_data['request_id']``.
 
     ``runner`` is the ``TurnRunner`` (for ``_ctx`` and ``_schedule``); ``card_message_id`` is the
-    delivered card's id when the adapter returned one, so the card itself is edited in place
-    (which also drops its buttons); ``command`` is the already-redacted command shown to the user.
+    delivered BUTTON card's id when the adapter returned one, so the card itself is edited in place
+    (which also drops its buttons). The plain-text prompt passes ``None``: it has no buttons to
+    drop and rewriting it would erase the record of what was asked. ``command`` is the
+    already-redacted command shown to the user. The notice is skipped when the run is no longer
+    current (``ctx._run_still_current``).
     """
     from tools.approval import register_gateway_settle
 
@@ -38,6 +41,11 @@ def register_timeout_notice(
     def settle(reason: str) -> None:
         if reason != "timeout":
             return  # answered / interrupted / notify_failed already produced their own feedback
+        # Same guard as every other late notice in TurnRunner: after /stop, /new or a restart the
+        # turn is over and this chat belongs to a newer run — do not edit or post into it.
+        still_current = getattr(runner._ctx, "_run_still_current", None)
+        if callable(still_current) and not still_current():
+            return
         runner._schedule(
             _post_timeout_notice(runner._ctx, command, card_message_id, timeout_s),
             "Approval timeout notice scheduling error")

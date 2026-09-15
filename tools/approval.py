@@ -480,10 +480,9 @@ _USER_SUMMARIES = {
 
 
 def _user_summary(outcome: str, noun: str = "command") -> str:
-    from tools.approval_context import _get_approval_timeout
-    seconds = _get_approval_timeout()
-    minutes = f"{seconds // 60} min" if seconds >= 60 and seconds % 60 == 0 else f"{seconds} s"
-    return _USER_SUMMARIES.get(outcome, "This {noun} did not run.").format(noun=noun, minutes=minutes)
+    from tools.approval_context import _get_approval_timeout, format_approval_window
+    window = format_approval_window(_get_approval_timeout())
+    return _USER_SUMMARIES.get(outcome, "This {noun} did not run.").format(noun=noun, minutes=window)
 
 
 def _denied(message: str, *, pattern_key: str, description: str, outcome: str, noun: str = "command",

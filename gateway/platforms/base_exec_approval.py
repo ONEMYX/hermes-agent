@@ -28,15 +28,10 @@ def approval_timeout_seconds() -> int:
 
 
 def format_approval_window(seconds: int) -> str:
-    """Human wording for a timeout: 300 → "5 minutes", 90 → "90 seconds", 7200 → "2 hours"."""
-    seconds = max(int(seconds or 0), 0)
-    if seconds and seconds % 3600 == 0:
-        count, unit = seconds // 3600, "hour"
-    elif seconds and seconds % 60 == 0:
-        count, unit = seconds // 60, "minute"
-    else:
-        count, unit = seconds, "second"
-    return f"{count} {unit}" if count == 1 else f"{count} {unit}s"
+    """Human wording for a timeout (300 → "5 minutes"); one formatter shared with the CLI notice and
+    the tool result's ``user_summary`` — see ``tools.approval_context.format_approval_window``."""
+    from tools.approval_context import format_approval_window as _shared
+    return _shared(seconds)
 
 
 def format_approval_deadline_line(timeout_s: int) -> str:

@@ -17,7 +17,7 @@ def test_denied_result_carries_a_user_summary_beside_the_model_text(monkeypatch)
     assert res["message"].startswith("BLOCKED")  # model contract untouched
     assert res["user_summary"] == "You denied this command — it did not run."
     timed = approval._denied("BLOCKED: timed out", pattern_key="rm", description="d", outcome="timeout", noun="code")
-    assert "5 min" in timed["user_summary"] and "did not run" in timed["user_summary"]
+    assert "5 minutes" in timed["user_summary"] and "did not run" in timed["user_summary"]
     assert "BLOCKED" not in timed["user_summary"] and "NOT" not in timed["user_summary"]
 
 
@@ -35,7 +35,7 @@ def test_timeout_notice_names_wait_and_config_command(monkeypatch):
     from tools import approval_context as ctx
     monkeypatch.setattr(ctx, "_get_approval_timeout", lambda: 300)
     text = t("approval.timeout", **ctx.approval_timeout_notice_kwargs())
-    assert "5 min" in text and "was not run" in text
+    assert "5 minutes" in text and "was not run" in text
     assert "hermes config set approvals.timeout 900" in text
     assert "{" not in text  # every placeholder filled
 
@@ -70,3 +70,14 @@ def test_prompt_title_reaches_the_plain_prompt_and_only_title_aware_callbacks(mo
     ap.prompt_dangerous_approval("x", "d", title="MCP server 'gh' is asking")
     out = capsys.readouterr().out
     assert "MCP server 'gh' is asking" in out and "DANGEROUS COMMAND" not in out
+
+
+def test_every_surface_renders_the_timeout_window_with_one_formatter(monkeypatch):
+    """CLI notice, tool user_summary and gateway card must agree on the wording of the same window."""
+    from tools import approval, approval_context as ctx
+    from gateway.platforms.base_exec_approval import format_approval_timed_out_notice
+    monkeypatch.setattr(ctx, "_get_approval_timeout", lambda: 90)
+    window = ctx.format_approval_window(90)
+    assert window in ctx.approval_timeout_notice_kwargs()["waited"]
+    assert window in approval._user_summary("timeout")
+    assert window in format_approval_timed_out_notice(90)
