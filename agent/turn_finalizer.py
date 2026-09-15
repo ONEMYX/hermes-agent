@@ -12,6 +12,7 @@ from contextlib import suppress
 from typing import Any, Callable, List, Optional, Tuple
 
 from agent.codex_responses_adapter import _summarize_user_message_for_log
+from agent.turn_failure_copy import exit_reason_failure, stamp_failure
 from agent.context_compressor import _DB_PERSISTED_MARKER
 from agent.message_content import flatten_message_text
 from agent.message_metadata import append_message, stamp_message_timestamp
@@ -377,6 +378,7 @@ def _explain_abnormal_exit(agent, final_response, _turn_exit_reason, preserved_v
             _explanation = agent._format_turn_completion_explanation(
                 _turn_exit_reason, getattr(agent, "_last_persistence_error_cause", None),
                 db_path=getattr(getattr(agent, "_session_db", None), "db_path", None),
+                model=str(getattr(agent, "model", "") or ""),
             )
             if _explanation:
                 # Replace the bare sentinel; keep a partial fragment and append why.
@@ -449,6 +451,13 @@ def finalize_turn(
         _pending_verification_response_previewed=_pending_verification_response_previewed,
         logger=logger,
     )
+
+    # Loop exits that are failures in their own right (empty response after retries, outer-loop
+    # error cap, shutdown) carry the verdict the UI descriptor needs; a bare ``turn_exit_reason``
+    # collapsed to code="unknown", retryable=True on every surface.
+    _exit_failure = None if interrupted else exit_reason_failure(_turn_exit_reason)
+    if _exit_failure is not None:
+        failed = True
 
     completed = (
         final_response is not None
@@ -577,6 +586,9 @@ def finalize_turn(
         )
         _cause = getattr(agent, "_last_persistence_error_cause", None)
         result["failure_reason"] = "session_persistence_failed:" + (_cause or "unknown")
+    elif _exit_failure is not None:
+        result["error"] = final_response or str(_turn_exit_reason)
+        stamp_failure(result, *_exit_failure)
     # Cleanup failures are surfaced, but the response is returned either way (#8049).
     if _cleanup_errors:
         result["cleanup_errors"] = _cleanup_errors
