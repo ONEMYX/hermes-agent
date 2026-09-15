@@ -3111,14 +3111,17 @@ class HermesCLI(CLIProcessNotificationsMixin, CLIAgentSetupMixin, CLICommandsMix
             # registry walk already loaded plus the pure notices module (a heavy import here races
             # importlib's module locks against the main thread).
             from model_tools import check_tool_availability
-            from hermes_cli.tool_availability_notices import current_terminal_backend, tool_availability_warning_lines
+            from hermes_cli.tool_availability_notices import (
+                current_terminal_backend, filter_to_enabled_toolsets, tool_availability_warning_lines,
+            )
             from tools.terminal_tool import terminal_backend_unavailable_reason
+            from toolsets import resolve_toolset
 
             _, unavailable = check_tool_availability()
-            # Only toolsets this CLI session actually has (same filter as the banner grid).
-            enabled = {str(t) for t in (self.enabled_toolsets or [])}
-            if enabled:
-                unavailable = [u for u in unavailable if str(u.get("name", "")) in enabled]
+            # Only toolsets this CLI session actually has. The selection is usually a composite bundle
+            # (``hermes-cli``), so expand it to tool names before matching — a raw name comparison
+            # matched nothing on a default install and silently dropped the terminal notice.
+            unavailable = filter_to_enabled_toolsets(unavailable, self.enabled_toolsets or [], resolve_toolset)
             lines = tool_availability_warning_lines(
                 unavailable, terminal_reason=terminal_backend_unavailable_reason(),
                 terminal_backend=current_terminal_backend())

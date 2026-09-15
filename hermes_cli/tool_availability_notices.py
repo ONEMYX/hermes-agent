@@ -8,16 +8,45 @@ appear as secondary detail for toolsets with a single obvious key.
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Callable, Iterable, Optional
 
 # Toolsets whose ``env_vars`` list is a multi-provider dump that means nothing to a user; render one
 # sentence per toolset instead. Provider names must exist under plugins/web/ (or be the Nous-managed row).
 _MULTI_PROVIDER_NOTICES: dict[str, str] = {
     "web": ("[yellow]⚠ Web search is off[/] — no search provider is set up yet (any one of Nous subscription, Exa, "
-            "Tavily, Firecrawl, Brave, or free DuckDuckGo works). Run [bold]hermes tools[/] and pick one under Web."),
+            "Tavily, Firecrawl, Brave, or free DuckDuckGo works). Run [bold]hermes setup tools[/] and set one up under "
+            "\"Web Search & Scraping\"."),
 }
 
-_GENERIC_FOOTER = "[dim]   Run 'hermes setup' to configure[/]"
+_GENERIC_FOOTER = "[dim]   Run 'hermes setup tools' to configure[/]"
+
+
+def filter_to_enabled_toolsets(unavailable: list[dict], enabled: Iterable[str],
+                               resolve: Callable[[str], Iterable[str]]) -> list[dict]:
+    """Keep only the *unavailable* entries this session would actually load.
+
+    ``enabled`` is the CLI's toolset selection as configured — on a default install that is a
+    composite bundle such as ``["hermes-cli"]``, never the individual names ``check_tool_availability``
+    reports — so each entry is expanded to tool names through ``resolve`` (``toolsets.resolve_toolset``)
+    and an unavailable toolset counts as enabled when its name is listed directly or any of its tools
+    is inside the expansion. An empty selection means "everything", so nothing is filtered."""
+    names = [str(t) for t in (enabled or []) if str(t)]
+    if not names:
+        return list(unavailable)
+    enabled_tools: set[str] = set()
+    for name in names:
+        try:
+            enabled_tools.update(str(t) for t in (resolve(name) or ()))
+        except Exception:
+            continue
+    name_set = set(names)
+
+    def _kept(item: dict) -> bool:
+        if str(item.get("name") or "") in name_set:
+            return True
+        return any(str(t) in enabled_tools for t in (item.get("tools") or ()))
+
+    return [item for item in unavailable if _kept(item)]
 
 
 def current_terminal_backend() -> str:
