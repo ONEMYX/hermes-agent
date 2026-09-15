@@ -20,6 +20,7 @@ import { isMissingPendingPromptRequest } from '@/lib/gateway-rpc'
 import { triggerHaptic } from '@/lib/haptics'
 import { KeyRound, Loader2, Lock, ShieldLock } from '@/lib/icons'
 import { $gateway } from '@/store/gateway'
+import { reconnectAction } from '@/store/gateway-reconnect'
 import { notifyError } from '@/store/notifications'
 import {
   clearSecretRequest,
@@ -69,7 +70,7 @@ function SudoDialog({ sessionId }: { sessionId: string | null }) {
       }
 
       if (!gateway) {
-        notifyError(new Error(copy.gatewayDisconnected), copy.sudoSendFailed)
+        notifyError(new Error(copy.gatewayDisconnected), copy.sudoSendFailed, { action: reconnectAction() })
 
         return
       }
@@ -169,7 +170,7 @@ function SecretDialog({ sessionId }: { sessionId: string | null }) {
       }
 
       if (!gateway) {
-        notifyError(new Error(copy.gatewayDisconnected), copy.secretSendFailed)
+        notifyError(new Error(copy.gatewayDisconnected), copy.secretSendFailed, { action: reconnectAction() })
 
         return
       }
@@ -270,7 +271,7 @@ function VaultUnlockDialog({ sessionId }: { sessionId: string | null }) {
       }
 
       if (!gateway) {
-        notifyError(new Error(copy.gatewayDisconnected), copy.vaultUnlockSendFailed)
+        notifyError(new Error(copy.gatewayDisconnected), copy.vaultUnlockSendFailed, { action: reconnectAction() })
 
         return
       }
@@ -367,7 +368,7 @@ function VaultSaveLoginDialog({ sessionId }: { sessionId: string | null }) {
       }
 
       if (!gateway) {
-        notifyError(new Error(copy.gatewayDisconnected), copy.vaultSaveSendFailed)
+        notifyError(new Error(copy.gatewayDisconnected), copy.vaultSaveSendFailed, { action: reconnectAction() })
 
         return
       }
@@ -479,7 +480,7 @@ function VaultCodeDialog({ sessionId }: { sessionId: string | null }) {
       }
 
       if (!gateway) {
-        notifyError(new Error(copy.gatewayDisconnected), copy.vaultCodeSendFailed)
+        notifyError(new Error(copy.gatewayDisconnected), copy.vaultCodeSendFailed, { action: reconnectAction() })
 
         return
       }
