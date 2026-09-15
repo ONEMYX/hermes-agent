@@ -151,3 +151,4 @@ def test_backup_recovery_hint_cites_the_slash_command_not_a_fake_subcommand():
     hint = _snapshot_recovery_hint()
     assert "/snapshot list" in hint and "/snapshot restore" in hint
     assert "hermes snapshot" not in hint  # `hermes snapshot` is not a CLI subcommand
+    assert "CLI only" in hint  # /snapshot is cli_only; Desktop/gateway readers must not go looking for it

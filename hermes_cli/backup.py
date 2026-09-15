@@ -39,7 +39,8 @@ _QUICK_SNAPSHOTS_DIR = "state-snapshots"
 def _snapshot_recovery_hint() -> str:
     """How to restore a state snapshot. There is no `hermes snapshot` subcommand — only the /snapshot
     slash command inside a `hermes` session (hermes_cli/commands.py)."""
-    return "To restore a newer snapshot, start `hermes` and run `/snapshot list`, then `/snapshot restore <id>`."
+    return ("To restore a newer snapshot, start `hermes` in a terminal and run `/snapshot list`, then "
+            "`/snapshot restore <id>` (CLI only).")
 
 # Directory names to skip (matched against each path component). ``hermes-agent`` only matches at
 # the root (``_should_exclude``) so skill dirs like ``skills/.../hermes-agent/`` survive. The

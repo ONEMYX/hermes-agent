@@ -336,21 +336,43 @@ def _strip_stale_tool_call_markers(messages: List[Dict[str, Any]]) -> List[Dict[
     return messages
 
 
-def format_session_db_unavailable(prefix: str = "Hermes can't open its session history right now") -> str:
-    """User-facing two-liner: plain cause + the repair command, then ``Details: <raw cause>``.
+_SESSION_DB_CONSEQUENCE = "Sessions will not be saved until this is fixed."
+_NETWORK_DRIVE_HINT = " If the database lives on a network drive, move it to a local disk."
+_NETWORK_DRIVE_GLOSS = "the session database could not be opened; it may be on a network or unsupported drive"
+_NETWORK_DRIVE_ACTION = (
+    "Move it to a local disk (`hermes doctor` shows where it is), then start Hermes again."
+)
 
-    The cause table lives in ``hermes_state_user_copy`` so CLI, gateway and TUI agree; SQLite/WAL
-    specifics stay in the Details line. Network filesystems (NFS/SMB/FUSE/ZFS) cannot host SQLite's
-    WAL — name that when the cause says so, as its own sentence so the lead stays jargon-free."""
+
+def format_session_db_unavailable(
+    prefix: str = "Hermes can't open its session history right now",
+    *,
+    details: bool = False,
+) -> str:
+    """User-facing one-liner: ``<prefix>: <gloss>. <consequence> <action>[ network hint]``.
+
+    The cause table lives in ``hermes_state_user_copy`` so CLI, gateway and TUI agree. Chat
+    surfaces (gateway, TUI) get the one-liner; ``details=True`` (the CLI banner) appends a
+    ``Details: <raw cause>`` line for the raw SQLite text. Network filesystems (NFS/SMB/FUSE/ZFS)
+    cannot host SQLite's write-ahead log: when the raw cause carries one of those markers the
+    message names the network-drive suspicion, because ``hermes doctor --fix`` cannot repair a
+    mount — only moving the file can."""
     cause = get_last_init_error()
     if not cause:
-        return f"{prefix}. Run `hermes doctor` to check the storage location."
+        return f"{prefix}. {_SESSION_DB_CONSEQUENCE} Run `hermes doctor` to check the storage location."
     from hermes_state_user_copy import describe_storage_failure
     failure = describe_storage_failure(cause)
-    hint = ""
+    gloss, action, hint = failure.gloss, failure.action, ""
     if any(m in cause.lower() for m in _WAL_INCOMPAT_MARKERS):
-        hint = " If the database lives on a network drive, move it to a local disk."
-    return f"{prefix}: {failure.gloss}. {failure.action}{hint}\nDetails: {cause}"
+        if failure.cause == "unknown":
+            gloss, action = _NETWORK_DRIVE_GLOSS, _NETWORK_DRIVE_ACTION
+        else:
+            hint = _NETWORK_DRIVE_HINT
+    text = f"{prefix}: {gloss}. {_SESSION_DB_CONSEQUENCE} {action}{hint}"
+    if details:
+        from hermes_state_user_copy import storage_failure_details
+        text += f"\nDetails: {storage_failure_details(cause)}"
+    return text
 
 
 # Auto-repair at most once per DB path per process (no repair loops; serialises concurrent
@@ -671,9 +693,9 @@ class SessionDB(
         where = f"moved aside to {qpath}" if qpath else "left in place (it could not be moved aside)"
         msg = (
             f"state.db was empty or damaged ({zsize} bytes) and has been {where}; Hermes started with a "
-            "fresh, empty session database. To bring old sessions back: in Hermes chat run `/snapshot list` "
-            "then `/snapshot restore <id>`, or run "
-            f"`hermes sessions recover --source {qpath or self.db_path} --inspect-only`."
+            "fresh, empty session database. To bring old sessions back, run "
+            f"`hermes sessions recover --source {qpath or self.db_path} --inspect-only`, or restore a "
+            "snapshot with `/snapshot list` then `/snapshot restore <id>` (terminal `hermes` chat only)."
         )
         logger.error(msg)
         _set_last_init_error(msg)
