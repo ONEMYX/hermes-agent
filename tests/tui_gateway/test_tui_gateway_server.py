@@ -15111,7 +15111,8 @@ def test_session_delete_returns_db_unavailable_when_no_db(monkeypatch):
 
     assert "error" in resp
     assert resp["error"]["code"] == 5036
-    assert "state.db unavailable" in resp["error"]["message"]
+    assert "Session storage is unavailable" in resp["error"]["message"]
+    assert resp["error"]["data"]["code"] == "storage_locked"
 
 
 def test_session_delete_refuses_active_session(monkeypatch):
