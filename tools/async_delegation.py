@@ -858,8 +858,8 @@ def _stalled_error_text(event_record: Dict[str, Any]) -> str:
     numbers or worker internals (those stay in the log line and the stall_* metadata)."""
     goal = " ".join(str(event_record.get("goal") or "").split())
     label = f'Background task "{goal[:120]}"' if goal else "The background task"
-    quiet = event_record.get("_stall_quiet_seconds")
-    silence = f" after {max(1, round(float(quiet) / 60))} min of no progress" if quiet else ""
+    quiet = float(event_record.get("_stall_quiet_seconds") or 0)
+    silence = f" after {round(quiet / 60)} min of no progress" if quiet >= 60 else ""
     return (f"{label} stopped responding{silence} and was cancelled. Nothing else was affected; "
             "ask me to run it again if you still need it.")
 
