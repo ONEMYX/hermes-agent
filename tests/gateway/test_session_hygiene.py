@@ -150,20 +150,19 @@ class TestSessionHygieneThresholds:
         assert approx_tokens < huge_model_threshold
 
 
-def test_hygiene_total_ceiling_warning_reports_elapsed_and_progress():
+@pytest.mark.parametrize("total_exhausted", [True, False])
+def test_hygiene_timeout_warning_names_chat_commands_not_config(total_exhausted):
+    """The chat user cannot edit model config or read second counts; the notice names the
+    slash commands they can run and keeps the timing detail in the log."""
     from gateway.run import _hygiene_compression_timeout_message
 
     warning = _hygiene_compression_timeout_message(
-        total_exhausted=True,
-        elapsed=600.4,
-        idle_timeout=30.0,
-        progress_observed=True,
+        total_exhausted=total_exhausted, elapsed=600.4, idle_timeout=30.0, progress_observed=True,
     )
 
-    assert "total ceiling after 600.4s" in warning
-    assert "summary output was observed" in warning
-    assert "30.0s" not in warning
-    assert "no output" not in warning
+    assert "/compress" in warning and "/new" in warning
+    assert "600.4" not in warning and "30.0" not in warning
+    assert "auxiliary" not in warning and "/reset" not in warning
 
 
 class TestSessionHygieneWarnThreshold:
