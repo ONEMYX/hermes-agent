@@ -257,6 +257,14 @@ def _get_approval_timeout() -> int:
     return min(raw, safe_cap)
 
 
+def approval_timeout_notice_kwargs() -> dict:
+    """``{waited, suggested}`` for the ``approval.timeout`` copy: how long we waited (``5 min`` /
+    ``90 s``) and a tripled ``approvals.timeout`` value the user can paste into ``hermes config set``."""
+    seconds = _get_approval_timeout()
+    waited = f"{seconds // 60} min" if seconds >= 60 and seconds % 60 == 0 else f"{seconds} s"
+    return {"waited": waited, "suggested": seconds * 3}
+
+
 def _binary_approval_mode(key: str) -> str:
     """Read ``approvals.<key>`` as 'approve' or 'deny' (default deny)."""
     try:
