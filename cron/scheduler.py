@@ -99,19 +99,20 @@ def _set_cron_session_title(session_db, session_id, base_title):
 
 
 def _fallback_chain_phrase() -> str:
-    """Fallback-chain clause for a provider-failure message: "exhausted" vs "none configured" (most
-    installs). Fails open to the ambiguous wording if config can't be read — never crash delivery.
+    """Backup-provider clause for a provider-failure notice: "the backups failed too" vs "none
+    configured" (most installs). Fails open to the former if config can't be read — never crash
+    delivery.
     """
     try:
         cfg = load_config() or {}
         chain = get_fallback_chain(cfg)
     except Exception:
-        return "Fallback chain was exhausted or unavailable."
+        return "No backup provider succeeded either."
     if chain:
-        return "Fallback chain was exhausted or unavailable."
+        return "No backup provider succeeded either."
     return (
-        "No fallback chain configured — add one with `hermes fallback add`, "
-        "or set a cron fleet default via `cron.model` + `cron.model_provider` in config.yaml."
+        "No backup provider is configured — add one with `hermes fallback add`, "
+        "or set a cron-wide default via `cron.model` + `cron.model_provider` in config.yaml."
     )
 
 
@@ -216,100 +217,57 @@ def _log_tick_yield_once(reason: str) -> None:
 
 
 def _summarize_cron_failure_for_delivery(job: dict, error: str | None) -> str:
-    """Compact one-line failure message for chat delivery (full details stay in cron output)."""
+    """One-line failure notice for chat delivery (full details stay in the run output).
+
+    Deterministic scheduler/script shapes are matched first (their text can contain "timed out"
+    and would otherwise be blamed on the model service); everything else goes through the shared
+    ``classify_api_error`` verdict and the copy table in ``scheduler_failure_copy``."""
+    from cron.scheduler_failure_copy import (
+        classify_cron_failure_reason, generic_failure_notice, inactivity_notice,
+        provider_failure_notice, script_timeout_notice)
+
     job_name = job.get("name") or job.get("id") or "cron job"
+    job_id = job.get("id") or job_name
     text = (error or "unknown error").strip()
     lower = text.lower()
 
-    # no_agent jobs never reach a model, so provider errors are structurally impossible for them.
-    # Gate on job MODE before substring matching, or a script's own wording ("timed out", "429")
-    # would blame the wrong subsystem; the generic cleaner below reports what actually happened.
-    provider_reachable = not job.get("no_agent")
-
     # Script runner contract ("Script timed out after {n}s: {path}") — also for agent jobs with a
-    # context script. Must precede generic timeout matching so it never claims a provider fallback.
+    # context script. Must precede provider classification so it never claims a model failure.
     # See #78503, #82460.
     if lower.startswith("script timed out"):
-        return (
-            f"⚠️ Cron '{job_name}' failed: script timed out. "
-            "No model was invoked. Full details saved in cron output."
-        )
+        return script_timeout_notice(job_name, job_id)
 
-    # Whole-token 429: substrings in job ids/ports/hashes tripped false rate-limit alerts.
-    if provider_reachable and (
-        # Provider/API failures are the common noisy path. Keep these short. Match 429 as a whole token
-        # (#83188 @cation98): bare substring matching let identifiers containing those digits (job ids,
-        # ports, hashes) trip a false "provider rate limit" alert.
-        re.search(r"\b429\b", text) or "rate limit" in lower or "usage limit" in lower
-    ):
-        reason = "rate limit"
-        if "weekly usage limit" in lower:
-            reason = "weekly usage limit"
-        elif "quota" in lower:
-            reason = "quota limit"
-        return (
-            f"⚠️ Cron '{job_name}' failed: provider {reason}. "
-            f"{_fallback_chain_phrase()} "
-            "Full details saved in cron output."
-        )
-
-    # Scheduler inactivity watchdog shape ("idle for {n}s (limit {m}s)"). Must precede the generic
-    # provider-timeout branch: the job's own tool going quiet involves no provider/fallback chain.
-    # The scheduler's own inactivity watchdog (see the TimeoutError raised above at "Cron job '{job_name}'
-    # idle for {secs}s (limit {limit}s) — last activity: {desc}") produces a message that contains the
-    # substring "timed out"/"timeout" nowhere, but DOES contain "idle for ... (limit ...)" — however
-    # older/other call sites can still phrase an inactivity abort using "timed out" wording, so match on the
-    # "idle for Ns (limit" shape specifically (case-insensitive) BEFORE the generic provider- timeout branch
-    # below. Without this, an inactivity timeout — the job's OWN tool call/turn going quiet, no provider or
-    # fallback chain ever involved — gets rewritten into a misleading "provider timeout / fallback chain
-    # exhausted" message, sending the operator to debug the wrong system entirely (field-reported: a stuck
-    # `terminal` tool call tripped the 600s inactivity limit and was reported as a provider/fallback
-    # failure). Mirrors the same reordering fix upstream issue #59549 applied for script timeouts vs
-    # provider timeouts — check the more specific, deterministic signature first.
+    # Scheduler inactivity watchdog ("idle for {n}s (limit {m}s)"): the job's OWN tool call went
+    # quiet, no model service involved. Its text may still contain "timed out", so it must be
+    # recognised before the classifier (field-reported: a stuck `terminal` call was blamed on the
+    # provider and the operator debugged the wrong system).
     if re.search(r"idle for \d+s\s*\(limit \d+s\)", lower):
-        return (
-            f"⚠️ Cron '{job_name}' failed: the job itself stalled — no tool/API "
-            "activity for the configured inactivity window. Not a provider or "
-            "fallback-chain issue; check what the job was doing when it went "
-            "quiet. Full details saved in cron output."
-        )
+        return inactivity_notice(job_name, job_id)
 
-    if provider_reachable and (
-        "readtimeout" in lower or "timed out" in lower or "timeout" in lower
-    ):
-        return (
-            f"⚠️ Cron '{job_name}' failed: provider timeout. "
-            f"{_fallback_chain_phrase()} "
-            "Full details saved in cron output."
-        )
-
-    # Whole-token 401/403 and auth wording so "oauth", "4015" etc. don't trip a false auth message.
-    if provider_reachable and (
-        re.search(r"authenticat|authoriz", lower) or re.search(r"\b(401|403)\b", text)
-    ):
-        return (
-            f"⚠️ Cron '{job_name}' failed: provider authentication error. "
-            "Full details saved in cron output."
-        )
+    # no_agent jobs never reach a model, so provider errors are structurally impossible for them:
+    # gate on job MODE before classifying, or a script's own wording ("429", "timed out") would
+    # blame the wrong subsystem.
+    if not job.get("no_agent"):
+        notice = provider_failure_notice(
+            job_name, job_id, classify_cron_failure_reason(text),
+            backup_provider_phrase=_fallback_chain_phrase())
+        if notice is not None:
+            return notice
 
     # Strip exception wrappers; bound input first so a multi-KB blob can't slow the regexes.
     cleaned = re.sub(r"^(RuntimeError|Exception|ValueError|HTTPStatusError):\s*", "", text[:2000])
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    cleaned = re.sub(r"\s+", " ", cleaned).strip().rstrip(".")
     if len(cleaned) > 180:
         cleaned = cleaned[:177].rstrip() + "..."
-    message = f"⚠️ Cron '{job_name}' failed: {cleaned}"
+    message = generic_failure_notice(job_name, job_id, cleaned)
 
-    # Import-class failures in a gateway whose checkout changed underneath it (mixed sys.modules)
-    # read like code bugs. When boot SHA ≠ disk HEAD, APPEND cause + fix — never replace the raw
-    # error, which carries the failing symbol. Fail-safe: skew is None on non-git/no-fingerprint
-    # (message unchanged); no_agent jobs excluded via the same mode gate (a fresh subprocess
-    # resolves imports against disk, so its ImportError is the script's own problem).
-    # Import-class failures (#95294 part 3): a long-lived gateway whose checkout was updated underneath it
-    # (interrupted `hermes update`, manual git pull) serves MIXED modules — old entries frozen in
-    # sys.modules, new files loaded by lazy imports — and every agent cron job then dies with `cannot import
-    # name X` / ModuleNotFoundError. The error itself reads like a code bug, so operators debug the wrong
-    # thing (2 days on the reporting incident, 15 missed jobs).
-    if provider_reachable and re.search(
+    # Import-class failures (#95294 part 3): a long-lived gateway whose checkout was updated
+    # underneath it (interrupted `hermes update`, manual git pull) serves MIXED modules and every
+    # agent cron job dies with `cannot import name X`. The error reads like a code bug, so APPEND
+    # cause + fix — never replace the raw error, which carries the failing symbol. Fail-safe: skew
+    # is None on non-git/no-fingerprint; no_agent jobs excluded (a fresh subprocess resolves
+    # imports against disk, so its ImportError is the script's own problem).
+    if not job.get("no_agent") and re.search(
         r"cannot import name|modulenotfounderror|importerror", lower
     ):
         try:
@@ -1505,12 +1463,12 @@ def _blocked_config_result(job_id: str, job_name: str, _pf_reason: str) -> tuple
         f"**Job ID:** {job_id}\n"
         f"**Run Time:** {_hermes_now().strftime('%Y-%m-%d %H:%M:%S')}\n"
         f"**Status:** BLOCKED (configuration)\n\n"
-        "Pre-dispatch validation found a configuration problem and "
-        "the agent was NOT run (no tokens spent).\n\n"
+        "The pre-run configuration check found a problem, so the agent did not run "
+        "(nothing was charged).\n\n"
         f"**Reason:** {_pf_reason}\n\n"
-        "The job will stay blocked (without re-alerting) until the "
-        "configuration is fixed; the next healthy run clears this "
-        "state. Set `cron.preflight: false` in config.yaml to disable this validation."
+        "Hermes tries again at the next scheduled time and clears this state on the first healthy "
+        "run; this alert is not repeated. Check with `hermes cron doctor`. Set `cron.preflight: "
+        "false` in config.yaml to disable this check."
     )
     return False, blocked_doc, "", f"{marker} {_pf_reason}"
 
@@ -2594,12 +2552,8 @@ def _compose_run_delivery(
     if blocked_config and not success:
         # Bypass the generic failure summarizer (its auth/timeout heuristics would mislabel this).
         _pf_text = re.sub(r"\[blocked_config[^\]]*\]\s*", "", err).strip()
-        deliver_content = (
-            f"⛔ Cron '{job.get('name') or job['id']}' blocked by "
-            f"configuration validation (no LLM call was made): "
-            f"{_pf_text} "
-            "This alert is sent once; the job stays blocked until the configuration is fixed."
-        )
+        from cron.scheduler_failure_copy import blocked_config_notice
+        deliver_content = blocked_config_notice(job.get("name") or job["id"], _pf_text)
     elif success:
         deliver_content = final_response
         _resolve_incidents_for_recovered_job(job)

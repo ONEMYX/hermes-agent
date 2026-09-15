@@ -115,9 +115,10 @@ def test_run_one_job_exception_delivers_failure_alert(monkeypatch):
     ok = s.run_one_job({"id": "j3", "name": "morning", "deliver": "telegram"})
 
     assert ok is False
-    assert delivered == [
-        ("j3", "⚠️ Cron 'morning' failed: Gemini HTTP 503 (UNAVAILABLE)")
-    ]
+    assert len(delivered) == 1 and delivered[0][0] == "j3"
+    # 503 is an overloaded verdict: plain cause, no HTTP code as the lead, a retry command.
+    assert "overloaded" in delivered[0][1]
+    assert "hermes cron run j3" in delivered[0][1]
     assert marked == [
         (("j3", False, "Gemini HTTP 503 (UNAVAILABLE)"), {"delivery_error": None})
     ]
@@ -234,7 +235,9 @@ def test_escaped_failure_delivery_stays_quiet_below_the_threshold(monkeypatch):
     )
 
     assert ok is False
-    assert delivered == ["⚠️ Cron 'scout' failed: provider failed"]
+    assert len(delivered) == 1
+    assert delivered[0].startswith("⚠️ Cron 'scout' failed: provider failed")
+    assert "hermes cron runs j6" in delivered[0]
 
 
 def test_run_one_job_exception_after_delivery_does_not_redeliver(monkeypatch):
