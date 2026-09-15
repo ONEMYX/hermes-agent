@@ -176,7 +176,7 @@ const CODE_PLANS: Partial<Record<ErrorCodeKey, Partial<ErrorRecoveryPlan>>> = {
   SESSION_NOT_OWNED: { retry: false, startNewSession: true },
   content_policy_blocked: { editMessage: true, retry: false },
   context_overflow: { compress: true, retry: false, startNewSession: true },
-  disk_full: { openHermesFolder: true, retry: false },
+  disk_full: { openHermesFolder: true, retry: true },
   loop_error: { startNewSession: true },
   model_not_found: { chooseModel: true, retry: false },
   payload_too_large: { compress: true, retry: false, startNewSession: true }
