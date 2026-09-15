@@ -248,7 +248,6 @@ export const en: Translations = {
       methodNotAllowed: "Hermes' background service is out of step with the app, probably after an update. Restart it to fix this.",
       microphonePermission: 'Microphone permission was denied.',
       openaiRejectedApiKey: "OpenAI didn't accept your API key. Update it in Settings → Keys, then try again.",
-      openaiRejectedApiKeyWithStatus: () => "OpenAI didn't accept your API key. Update it in Settings → Keys, then try again.",
       openaiTtsNeedsKey: 'Voice needs an OpenAI key. Add one in Settings → Keys.',
       codeSkewRestartRequired: 'Hermes was updated but is still running the old version. Restart it to finish the update.',
       restartHermesFailed: "Couldn't restart Hermes"
@@ -1619,11 +1618,11 @@ export const en: Translations = {
         selectedTitle: 'Backend selected',
         selectedMessage: backend => `Terminal commands now run via ${backend}. Applies to new sessions.`,
         failedSelect: backend => `Failed to select ${backend}`,
-        needsSetupHint: 'You can select this backend now — commands will fail until setup is complete.',
+        needsSetupHint: 'You can select this option now — commands will fail until setup is complete.',
         unavailableTitle: 'Terminal commands are unavailable',
         unavailableMessage: backend =>
-          `Hermes can't run shell commands right now: the ${backend} backend isn't ready. Switch to Local, or fix the backend and retry.`,
-        openBackendSettings: 'Open backend settings',
+          `Hermes can't run shell commands right now: ${backend} isn't ready. Switch to Local, or finish setting up ${backend} and try again.`,
+        openBackendSettings: 'Open terminal settings',
         useLocal: 'Use Local',
         switchedToLocal: 'Terminal commands now run locally. Applies to new sessions.'
       },
@@ -1797,7 +1796,7 @@ export const en: Translations = {
       actionFailed: 'Skill action failed',
       installBlockedTitle: name => `Couldn't install ${name}`,
       installBlockedMessage: (findings, unverified) =>
-        `The security scan flagged ${findings} item${findings === 1 ? '' : 's'} to review${unverified ? ' and the skill comes from an unverified source' : ''}. Read the scan before deciding whether to trust the author.`,
+        `The security scan flagged ${findings > 0 ? `${findings} item${findings === 1 ? '' : 's'}` : 'risky patterns'} to review${unverified ? ' and the skill comes from an unverified source' : ''}. Read the scan before deciding whether to trust the author.`,
       viewScan: 'View scan',
       openLog: 'Open log',
       actionLog: 'Action log',
@@ -3927,25 +3926,25 @@ export const en: Translations = {
         streaming: 'The reply was cut off'
       },
       errorLayerBodies: {
-        auth: 'The AI service rejected your sign-in. Check the credentials for this provider, then retry.',
+        auth: 'The AI service rejected your sign-in. Check the credentials for this provider, then send your message again.',
         billing: 'Your account has no credits left for this provider. Top up or switch provider, then send again.',
         disk: 'Your disk is full, so Hermes could not save this conversation. Free some space, then retry.',
-        endpoint: "Hermes can't reach your custom model server. Check that it is running, then retry.",
-        gateway: 'Hermes hit an internal problem starting this reply. Retry; if it keeps happening, send diagnostics.',
+        endpoint: "Hermes can't reach your custom model server. Check that it is running, then send your message again.",
+        gateway: 'Hermes hit an internal problem starting this reply. Send your message again; if it keeps happening, send diagnostics.',
         generic: 'Something went wrong while Hermes was replying. Retry, or copy the details if it keeps happening.',
         provider: 'The AI service could not complete this request. Retry in a moment or switch provider.',
-        runtime: 'Hermes hit an internal problem starting this reply. Retry; if it keeps happening, send diagnostics.',
+        runtime: 'Hermes hit an internal problem starting this reply. Send your message again; if it keeps happening, send diagnostics.',
         streaming: 'The connection dropped before the reply finished. Retry to send it again.'
       },
       errorCodes: {
         auth: {
           title: provider => `${provider} rejected your sign-in`,
-          body: provider => `The credentials saved for ${provider} were not accepted. Fix them, then retry.`
+          body: provider => `The credentials saved for ${provider} were not accepted. Fix them in Settings or switch provider, then send your message again.`
         },
         auth_permanent: {
           title: provider => `${provider} rejected your sign-in`,
           body: provider =>
-            `The credentials saved for ${provider} are invalid or were revoked. Update them or switch provider, then retry.`
+            `The credentials saved for ${provider} are invalid or were revoked. Update them or switch provider, then send your message again.`
         },
         billing: {
           title: 'Out of credits',
@@ -3978,7 +3977,7 @@ export const en: Translations = {
         ssl_cert_verification: {
           title: 'Secure connection failed',
           body: provider =>
-            `Hermes could not verify the secure connection to ${provider}. Check your network or proxy settings, then retry.`
+            `Hermes could not verify the secure connection to ${provider}. Check your network or proxy settings, or switch provider, then send your message again.`
         },
         context_overflow: {
           title: 'This conversation is too long',
@@ -3990,7 +3989,7 @@ export const en: Translations = {
         },
         model_not_found: {
           title: 'This model is not available',
-          body: provider => `${provider} does not offer this model on your account. Choose another model, then retry.`
+          body: provider => `${provider} does not offer this model on your account. Choose another model, then send your message again.`
         },
         provider_policy_blocked: {
           title: 'This model is blocked by your account settings',
@@ -4004,7 +4003,7 @@ export const en: Translations = {
         format_error: {
           title: 'The AI service rejected the request',
           body: provider =>
-            `${provider} did not accept how this request was built. Retry once; if it happens again, send diagnostics.`
+            `${provider} did not accept how this request was built. Switch provider or send diagnostics so we can look into it.`
         },
         truncated: {
           title: 'The reply was cut short',
@@ -4024,7 +4023,7 @@ export const en: Translations = {
         },
         SESSION_NOT_OWNED: {
           title: 'This chat is open somewhere else',
-          body: 'This chat is currently open in another Hermes window or terminal. Close it there and retry, or start a new chat here.'
+          body: 'This chat is currently open in another Hermes window or terminal. Close it there and send your message again, or start a new chat here.'
         },
         disk_full: {
           title: 'Disk full',
