@@ -116,8 +116,13 @@ def test_run_one_job_exception_delivers_failure_alert(monkeypatch):
 
     assert ok is False
     assert len(delivered) == 1 and delivered[0][0] == "j3"
-    # 503 is an overloaded verdict: plain cause, no HTTP code as the lead, a retry command.
-    assert "overloaded" in delivered[0][1]
+    # The notice carries the classifier verdict's gloss from the copy table (whatever its wording),
+    # never the raw HTTP code as the lead, plus a retry command.
+    from cron.scheduler_failure_copy import _PROVIDER_FAILURE_CAUSE, classify_cron_failure_reason
+    verdict = classify_cron_failure_reason("Gemini HTTP 503 (UNAVAILABLE)")
+    assert verdict in _PROVIDER_FAILURE_CAUSE
+    assert _PROVIDER_FAILURE_CAUSE[verdict] in delivered[0][1]
+    assert not delivered[0][1].lstrip("⚠️ ").startswith("Gemini HTTP 503")
     assert "hermes cron run j3" in delivered[0][1]
     assert marked == [
         (("j3", False, "Gemini HTTP 503 (UNAVAILABLE)"), {"delivery_error": None})
