@@ -76,12 +76,17 @@ describe('gateway `error` event → error card + toast', () => {
     expect(toast.action).toBeUndefined()
   })
 
-  it('leaves an unclassified gateway error without a descriptor (card falls back to the generic copy)', () => {
-    const { ctx, failAssistantMessage } = errorContext('HTTP 503: upstream connect error')
+  it('keeps the server\'s own plain copy as the toast message when no code was recovered', () => {
+    // tui_gateway/user_messages.py already writes actionable sentences for
+    // pre-turn failures; the generic "couldn't finish" gloss must not bury them.
+    const serverCopy = 'Hermes could not start the assistant for this chat. Check your model settings and try again.'
+    const { ctx, failAssistantMessage } = errorContext(serverCopy)
 
     handleStatusEvent(ctx)
 
-    expect(failAssistantMessage).toHaveBeenCalledWith('sess-1', 'HTTP 503: upstream connect error', 1_700_000_100, null)
-    expect($notifications.get()[0].message).toMatch(/Hermes couldn't finish this reply/)
+    expect(failAssistantMessage).toHaveBeenCalledWith('sess-1', serverCopy, 1_700_000_100, null)
+    const toast = $notifications.get()[0]
+    expect(toast.message).toBe(serverCopy)
+    expect(toast.detail).toBeUndefined()
   })
 })

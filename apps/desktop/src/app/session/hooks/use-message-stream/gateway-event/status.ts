@@ -186,7 +186,14 @@ export function handleStatusEvent(ctx: GatewayEventContext): boolean {
         ? { code: 'disk_full', layer: 'disk', retryable: false }
         : null
 
-    const card = errorCardText(TRANSLATIONS[getRuntimeI18nLocale()].assistant.thread, surface)
+    // When a code was recovered, the glossed card sentence explains it better
+    // than the raw refusal. When none was, the server's own text IS the plain
+    // copy (tui_gateway/user_messages.py writes actionable sentences for
+    // pre-turn failures — agent init, resume, cancelled-before-ready), and
+    // burying it under a generic "couldn't finish" gloss would hide the one
+    // instruction the user needs.
+    const card = surface ? errorCardText(TRANSLATIONS[getRuntimeI18nLocale()].assistant.thread, surface) : null
+    const toastMessage = card ? `${card.title}. ${card.body}` : errorMessage
 
     // A turn that errors out has also ended — drop any open blocking prompt
     // for this session so an approval/sudo/secret overlay can't linger past
@@ -205,7 +212,7 @@ export function handleStatusEvent(ctx: GatewayEventContext): boolean {
     }
 
     dispatchNativeNotification({
-      body: `${card.title}. ${card.body}`,
+      body: toastMessage,
       kind: 'turnError',
       sessionId,
       title: translateNow('notifications.native.turnErrorTitle')
@@ -219,15 +226,17 @@ export function handleStatusEvent(ctx: GatewayEventContext): boolean {
       // Toast globally, not just when the failing thread is focused: a
       // turn-ending error (e.g. out of funds) blocks every thread, so the
       // inline error alone is too easy to miss. The stable id collapses the
-      // same error from multiple blocked threads into one toast. Same glossed
-      // sentence as the card; the raw gateway text rides as the dimmed detail.
+      // same error from multiple blocked threads into one toast. For a
+      // recovered code the message is the card's glossed sentence with the raw
+      // gateway text as the dimmed detail; otherwise the server copy is the
+      // message and there is no separate detail to repeat.
       // No Retry action: assistant-ui's reload is per-thread, and for the
       // codes recovered above a retry would fail identically anyway.
       notify({
-        detail: errorMessage,
+        detail: surface ? errorMessage : undefined,
         id: `gateway-error:${errorMessage}`,
         kind: 'error',
-        message: `${card.title}. ${card.body}`,
+        message: toastMessage,
         title: translateNow('assistant.thread.errorToastTitle')
       })
     }
