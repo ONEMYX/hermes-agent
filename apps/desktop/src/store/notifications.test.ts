@@ -1,5 +1,7 @@
 import { beforeEach, expect, test } from 'vitest'
 
+import { en } from '@/i18n/en'
+
 import { $notifications, clearNotifications, isDiskFullErrorMessage, notifyError } from './notifications'
 import { $backendRestartRequest, $routeRequest } from './recovery-requests'
 
@@ -26,7 +28,7 @@ test('gateway_auth_failed error is summarized as sign-in, with an Open Gateways 
   expect(lastMessage()).not.toMatch(/API_SERVER_KEY|OpenAI|authentication failed/i)
 
   const action = $notifications.get()[0]?.action
-  expect(action?.label).toBe('Open Gateways')
+  expect(action?.label).toBe(en.notifications.actions.openGateways)
   action?.onClick()
   expect($routeRequest.get()?.path).toBe('/settings?tab=gateway')
 })
@@ -64,7 +66,7 @@ test('405 method-not-allowed toasts a restart in plain words with a Restart Herm
   notifyError(new Error('405 Method Not Allowed'), 'Request failed')
 
   expect(lastMessage()).not.toMatch(/405|Method Not Allowed|backend/i)
-  expect($notifications.get()[0]?.action?.label).toBe('Restart Hermes')
+  expect($notifications.get()[0]?.action?.label).toBe(en.notifications.actions.restartHermes)
   $notifications.get()[0]?.action?.onClick()
   expect($backendRestartRequest.get()).toBe(before + 1)
 })
@@ -102,5 +104,8 @@ test('code-skew 503 unwraps to a restart-required summary, not raw IPC JSON', ()
 
   expect(lastMessage()).toMatch(/still running the old version/i)
   expect(lastMessage()).not.toMatch(/hermes:api|systemctl|backend/i)
-  expect($notifications.get()[0]?.action?.label).toBe('Restart Hermes')
+  const before = $backendRestartRequest.get()
+  expect($notifications.get()[0]?.action?.label).toBe(en.notifications.actions.restartHermes)
+  $notifications.get()[0]?.action?.onClick()
+  expect($backendRestartRequest.get()).toBe(before + 1)
 })

@@ -9,6 +9,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { en } from '@/i18n/en'
 import { $displayTimestamps } from '@/store/display-timestamps'
 
 import { stubThreadEnvironment } from '../test-utils'
@@ -256,7 +257,7 @@ describe('code-keyed error card copy and actions', () => {
     expect(await screen.findByRole('button', { name: 'Choose a model' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
     // The raw HTTP body is not the lead sentence.
-    expect(screen.getByText('This model is not available')).toBeTruthy()
+    expect(screen.getByText(en.assistant.thread.errorCodes.model_not_found.title as string)).toBeTruthy()
     expect(screen.getByText(/HTTP 400/).closest('details')).not.toBeNull()
   })
 
