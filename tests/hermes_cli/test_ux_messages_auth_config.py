@@ -271,3 +271,60 @@ class TestProviderSetupFailureCopy:
         assert lines[0].startswith("Could not finish connecting a provider")
         assert "hermes portal" in " ".join(lines)
         assert any(line.strip().startswith("Details:") for line in lines)
+
+
+class TestRunLoginProviderAwareCopy:
+    def test_minimax_failure_names_minimax_retry_not_portal(self, capsys):
+        from hermes_cli.auth import PROVIDER_REGISTRY
+        from hermes_cli.model_setup_flows_common import _run_login
+
+        def _boom(*_a, **_k):
+            raise httpx.ConnectError("[Errno -2] Name or service not known")
+
+        assert _run_login(_boom, SimpleNamespace(), PROVIDER_REGISTRY["minimax-oauth"]) is False
+        out = capsys.readouterr().out
+        assert "hermes auth add minimax-oauth" in out
+        assert "hermes portal" not in out and "portal.nousresearch.com" not in out
+        assert "hermes login" not in out
+
+    def test_nous_failure_keeps_portal_retry(self, capsys):
+        from hermes_cli.auth import PROVIDER_REGISTRY
+        from hermes_cli.model_setup_flows_common import _run_login
+
+        def _boom(*_a, **_k):
+            raise httpx.ConnectError("boom")
+
+        assert _run_login(_boom, SimpleNamespace(), PROVIDER_REGISTRY["nous"]) is False
+        out = capsys.readouterr().out
+        assert "hermes portal" in out and "portal.nousresearch.com" in out
+
+    def test_silent_nonzero_system_exit_still_tells_user_how_to_retry(self, capsys):
+        from hermes_cli.auth import PROVIDER_REGISTRY
+        from hermes_cli.model_setup_flows_common import _run_login
+
+        def _quiet_exit(*_a, **_k):
+            raise SystemExit(1)
+
+        assert _run_login(_quiet_exit, SimpleNamespace(), PROVIDER_REGISTRY["openai-codex"]) is False
+        out = capsys.readouterr().out
+        assert "Sign-in did not complete" in out and "hermes auth add openai-codex" in out
+
+    def test_system_exit_with_message_surfaces_the_message(self, capsys):
+        from hermes_cli.model_setup_flows_common import _run_login
+
+        def _exit_msg(*_a, **_k):
+            raise SystemExit("token endpoint returned 400")
+
+        assert _run_login(_exit_msg) is False
+        out = capsys.readouterr().out
+        assert "token endpoint returned 400" in out and "hermes model" in out
+
+    def test_cancel_codes_stay_a_single_cancel_line(self, capsys):
+        from hermes_cli.model_setup_flows_common import _run_login
+
+        def _cancel(*_a, **_k):
+            raise SystemExit(130)
+
+        assert _run_login(_cancel) is False
+        out = capsys.readouterr().out
+        assert "cancelled" in out.lower() and "did not complete" not in out
