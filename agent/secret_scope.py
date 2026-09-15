@@ -42,7 +42,22 @@ class UnscopedSecretError(RuntimeError):
 
     The fix is to wrap the call path in ``set_secret_scope(...)`` (the per-turn
     / per-adapter profile scope), not to widen the global allowlist.
+
+    ``str(exc)`` is the ONE sentence an end user can act on; the developer diagnosis
+    (which secret, which doc) rides ``__notes__`` so tracebacks and logs keep it.
     """
+
+    def __init__(self, secret_name: str = "", developer_detail: str = ""):
+        what = f"this profile's {secret_name}" if secret_name else "this profile's API key"
+        super().__init__(
+            f"Hermes could not read {what} (an internal profile-scoping bug on the multiplexed "
+            "gateway, not your configuration). Run `hermes gateway restart`; if it keeps happening, "
+            "report it with `hermes debug share`."
+        )
+        self.secret_name = secret_name
+        self.developer_detail = developer_detail
+        if developer_detail:
+            self.add_note(developer_detail)
 
 
 def set_secret_scope(secrets: Optional[Mapping[str, str]]) -> Token:
@@ -128,12 +143,13 @@ def get_secret(name: str, default: Optional[str] = None) -> Optional[str]:
         return default if _MULTIPLEX_ACTIVE else _environ_or(name, default)
     if _MULTIPLEX_ACTIVE:
         raise UnscopedSecretError(
+            name,
             f"get_secret({name!r}) called with no profile secret scope active "
             f"while multiplexing is on. This credential read must run inside a "
             f"set_secret_scope(...) block (the per-turn / per-adapter profile "
             f"scope). Reading os.environ here would risk leaking another "
             f"profile's value. See website/docs/developer-guide/multiplexing-gateway.md "
-            f"(Workstream A)."
+            f"(Workstream A).",
         )
     return _environ_or(name, default)
 
