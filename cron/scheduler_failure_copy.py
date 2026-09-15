@@ -41,21 +41,13 @@ def classify_cron_failure_reason(text: str) -> str:
     return classify_api_error(exc).reason.value
 
 
-# FailoverReason value -> what happened (one clause, no HTTP codes, no "provider" jargon).
-# Reasons absent here are NOT provider-shaped and fall through to the generic notice.
-_PROVIDER_FAILURE_CAUSE: dict[str, str] = {
-    "timeout": "the AI model service did not respond in time",
-    "rate_limit": "the AI model service was rate-limited (too many requests)",
-    "upstream_rate_limit": "the AI model service was rate-limited (too many requests)",
-    "overloaded": "the AI model service is overloaded right now",
-    "server_error": "the AI model service returned an internal error",
-    "billing": "the AI model service says the account's usage or credit limit is reached",
-    "auth": "the AI model service rejected the sign-in",
-    "auth_permanent": "the AI model service rejected the sign-in",
-    "model_not_found": "the model this job uses was not found at the AI model service",
-    "context_overflow": "the job's prompt was too large for the model",
-    "payload_too_large": "the job's prompt was too large for the model",
-}
+# What happened, per reason: the one gloss table shared with subagent notices lives in
+# agent/turn_failure_copy.py so the two never drift; the job is the subject here.
+def _provider_failure_cause(reason: str) -> Optional[str]:
+    from agent.turn_failure_copy import failure_cause_gloss
+
+    return failure_cause_gloss(reason, subject="this job", possessive="the job's")
+
 
 _TRANSIENT_REASONS = frozenset({"timeout", "rate_limit", "upstream_rate_limit", "overloaded", "server_error"})
 
@@ -67,21 +59,28 @@ _PROVIDER_FAILURE_ACTION: dict[str, str] = {
         "`hermes cron edit {job_id} --provider <name>`."
     ),
     "auth": (
-        "Use /login (or `hermes login` on the host), or pin a working provider with "
-        "`hermes cron edit {job_id} --provider <name>`, then `hermes cron run {job_id}` to retry."
+        "Sign in again with /login (or `hermes auth add <provider>` in a terminal), or pin a "
+        "working provider with `hermes cron edit {job_id} --provider <name>`, then "
+        "`hermes cron run {job_id}` to retry."
     ),
     "model_not_found": "Pick another model with `hermes cron edit {job_id} --model <name>`.",
     "context_overflow": "Shorten the job's prompt with `hermes cron edit {job_id} --prompt <text>`.",
 }
 _PROVIDER_FAILURE_ACTION["auth_permanent"] = _PROVIDER_FAILURE_ACTION["auth"]
+_PROVIDER_FAILURE_ACTION["billing_unverified"] = _PROVIDER_FAILURE_ACTION["billing"]
 _PROVIDER_FAILURE_ACTION["payload_too_large"] = _PROVIDER_FAILURE_ACTION["context_overflow"]
+_PROVIDER_FAILURE_ACTION["content_policy_blocked"] = (
+    "Reword the job's prompt with `hermes cron edit {job_id} --prompt <text>`, or pick another "
+    "model with `hermes cron edit {job_id} --model <name>`."
+)
+_DEFAULT_FAILURE_ACTION = "Run it again with `hermes cron run {job_id}`, or edit it with `hermes cron edit {job_id}`."
 
 
 def provider_failure_notice(
     job_name: str, job_id: str, reason: str, *, backup_provider_phrase: str,
 ) -> Optional[str]:
     """The notice for a provider-shaped ``reason``, or None when the reason is not one."""
-    cause = _PROVIDER_FAILURE_CAUSE.get(reason)
+    cause = _provider_failure_cause(reason)
     if cause is None:
         return None
     if reason in _TRANSIENT_REASONS:
@@ -90,7 +89,7 @@ def provider_failure_notice(
             f"`hermes cron run {job_id}` tries now."
         )
     else:
-        action = _PROVIDER_FAILURE_ACTION[reason].format(job_id=job_id)
+        action = _PROVIDER_FAILURE_ACTION.get(reason, _DEFAULT_FAILURE_ACTION).format(job_id=job_id)
     return (
         f"⚠️ Cron '{job_name}' failed: {cause}. {action} "
         f"Run log: `hermes cron runs {job_id}`."

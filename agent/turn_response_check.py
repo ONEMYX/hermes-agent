@@ -288,7 +288,12 @@ def retry_invalid_response(
         agent._emit_status(f"❌ Max retries ({max_retries}) exceeded for invalid responses. Giving up.")
         logger.error("%sInvalid API response after %d retries.", agent.log_prefix, max_retries)
         agent._persist_session(messages, conversation_history)
-        _label = provider_label_for(agent.provider) if provider_name in ("Unknown", "") else provider_name
+        # "model=<id>" is describe_invalid_response's OpenRouter fallback, not a provider name.
+        _label = (
+            provider_label_for(agent.provider)
+            if provider_name in ("Unknown", "") or provider_name.startswith("model=")
+            else provider_name
+        )
         _final_response = site_copy(
             "invalid_response", label=_label, attempts=max_retries, detail=_failure_hint,
         )

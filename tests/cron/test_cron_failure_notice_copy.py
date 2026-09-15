@@ -32,10 +32,38 @@ def test_generic_failure_names_runs_and_pause_commands_and_the_real_output_dir()
 def test_auth_failure_points_at_login_and_a_retry_command(monkeypatch):
     _no_chain(monkeypatch)
     msg = _summarize_cron_failure_for_delivery(JOB, "Error code: 401 - Unauthorized")
-    assert "/login" in msg and "`hermes login`" in msg
+    assert "/login" in msg and "`hermes auth add <provider>`" in msg
+    assert "hermes login" not in msg  # that command was removed
     assert "`hermes cron run ab12cd34`" in msg
     assert not _HTTP_LEAD.search(msg)
     assert "401" not in msg
+
+
+def test_rate_and_usage_limit_phrases_still_yield_a_provider_notice(monkeypatch):
+    """The old cron regex ladder matched these substrings; the shared classifier must too, or a
+    Nous Portal limit turns into a raw generic notice."""
+    _no_chain(monkeypatch)
+    for text in (
+        "Nous Portal rate limit active until 15:00",
+        "RuntimeError: usage limit reached for this key",
+        "You have hit your weekly usage limit",
+        "insufficient quota",
+    ):
+        msg = _summarize_cron_failure_for_delivery(JOB, text)
+        assert "limit" in msg.lower(), msg
+        assert not _HTTP_LEAD.search(msg), msg
+        assert "`hermes cron run ab12cd34`" in msg or "`hermes cron edit ab12cd34" in msg, msg
+
+
+def test_cron_cause_gloss_is_the_shared_table():
+    """Cron, subagent and chat notices read one reason->cause table (agent/turn_failure_copy.py)."""
+    from agent.turn_failure_copy import FAILURE_CAUSE_GLOSS
+    from cron.scheduler_failure_copy import provider_failure_notice
+
+    for reason in FAILURE_CAUSE_GLOSS:
+        notice = provider_failure_notice("Morning brief", "ab12cd34", reason, backup_provider_phrase="x.")
+        assert notice is not None and "`hermes cron" in notice, reason
+    assert provider_failure_notice("Morning brief", "ab12cd34", "unknown", backup_provider_phrase="x.") is None
 
 
 def test_transient_provider_failures_never_lead_with_jargon(monkeypatch):

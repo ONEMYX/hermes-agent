@@ -44,29 +44,14 @@ def _clean_error_text(error: Any, max_chars: int = 200) -> str:
     line = lines[-1] if lines[0].startswith("Traceback") else lines[0]
     return line[: max_chars - 3] + "..." if len(line) > max_chars else line
 
-# Classified child failure_reason (agent.error_classifier.FailoverReason values) -> what happened, in
-# plain words. Anything not listed falls back to the child's cleaned error text.
-_FAILURE_REASON_COPY: Dict[str, str] = {
-    "rate_limit": "the AI model service was rate-limited (too many requests)",
-    "upstream_rate_limit": "the AI model service was rate-limited (too many requests)",
-    "billing": "the AI model service says the account's usage or credit limit is reached",
-    "billing_unverified": "the AI model service says the account's usage or credit limit is reached",
-    "auth": "the AI model service rejected the sign-in",
-    "auth_permanent": "the AI model service rejected the sign-in",
-    "timeout": "the AI model service did not respond in time",
-    "overloaded": "the AI model service is overloaded right now",
-    "server_error": "the AI model service returned an internal error",
-    "model_not_found": "the model it was given was not found at the AI model service",
-    "context_overflow": "its task grew too large for the model's context window",
-    "payload_too_large": "its task grew too large for the model's context window",
-    "content_policy_blocked": "the AI model service's safety filter rejected the request",
-}
-
 
 def describe_subagent_failure(failure_reason: Any, error: Any, max_chars: int = 200) -> str:
     """Plain-language reason for a failed child: the classified ``failure_reason`` gloss when there is one,
     else the child's own error text reduced to one clean line."""
-    gloss = _FAILURE_REASON_COPY.get(str(failure_reason or ""))
+    # One gloss table for every surface (agent/turn_failure_copy.py); the child is the subject.
+    from agent.turn_failure_copy import failure_cause_gloss
+
+    gloss = failure_cause_gloss(failure_reason, subject="it", possessive="its")
     return gloss or _clean_error_text(error, max_chars)
 
 

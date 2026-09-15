@@ -48,6 +48,11 @@ class UnscopedSecretError(RuntimeError):
     """
 
     def __init__(self, secret_name: str = "", developer_detail: str = ""):
+        # Older callers passed the whole developer sentence positionally
+        # (``UnscopedSecretError("get_secret('X') called with no scope ...")``); a secret
+        # name never contains whitespace, so treat such a string as the detail.
+        if secret_name and not developer_detail and any(ch.isspace() for ch in secret_name):
+            secret_name, developer_detail = "", secret_name
         what = f"this profile's {secret_name}" if secret_name else "this profile's API key"
         super().__init__(
             f"Hermes could not read {what} (an internal profile-scoping bug on the multiplexed "
